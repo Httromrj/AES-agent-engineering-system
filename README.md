@@ -43,6 +43,10 @@ the files changed during that attempt and leaves the previous manifest in
 place. Symbolic links, escaping manifest paths, malformed manifests, and
 other unsafe destinations are rejected before writes begin.
 
+Manifest hashes provide integrity checks for files relative to the recorded
+manifest. The manifest is not digitally signed, so an attacker who can modify
+both the manifest and its files cannot be detected by these hashes alone.
+
 ## Supported adapter targets
 | Agent | Project instruction entry point | Skills |
 |---|---|---|

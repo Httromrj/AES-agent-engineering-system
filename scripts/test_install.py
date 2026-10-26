@@ -1,9 +1,12 @@
 from pathlib import Path
 import json
 import hashlib
+import io
+import re
 import tempfile
 import unittest
 from unittest import mock
+from contextlib import redirect_stderr
 
 import install
 
@@ -98,6 +101,24 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(install.install(project, selected, True), 3)
             self.assertEqual((project / "AGENTS.md").read_bytes(), original)
 
+    def test_manifest_rejects_invalid_structure_and_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            manifest = project / ".agent-engineering/manifest.json"
+            cases = [
+                {"version": "invalid", "files": {"AGENTS.md": "0" * 64}},
+                {"version": "0.1.0", "files": {"AGENTS.md": "not-a-hash"}},
+                {"version": "0.1.0", "files": {"AGENTS.md": 123}},
+                {"version": "0.1.0", "files": {"unknown.txt": "0" * 64}},
+                {"version": "0.1.0", "files": {"AGENTS.md": "0" * 64}, "extra": True},
+            ]
+            for case in cases:
+                with self.subTest(case=case):
+                    manifest.write_text(json.dumps(case), encoding="utf-8")
+                    self.assertEqual(install.install(project, selected, True), 3)
+
     def test_symlinked_managed_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
             project = Path(directory)
@@ -108,6 +129,36 @@ class InstallerTests(unittest.TestCase):
                 self.skipTest(f"symlink unavailable: {exc}")
             self.assertEqual(install.install(project, selected, False), 3)
             self.assertEqual(list(Path(outside).iterdir()), [])
+
+    def test_symlinked_managed_file_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            external = Path(outside) / "agents.md"
+            external.write_text("external", encoding="utf-8")
+            agents = project / "AGENTS.md"
+            agents.unlink()
+            try:
+                agents.symlink_to(external)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertEqual(install.install(project, selected, True), 3)
+            self.assertEqual(external.read_text(encoding="utf-8"), "external")
+
+    def test_broken_managed_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            workflow = project / ".agent-engineering/core/workflow.md"
+            workflow.unlink()
+            try:
+                workflow.symlink_to(project / "missing-workflow.md")
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertEqual(install.install(project, selected, True), 3)
+            self.assertTrue(workflow.is_symlink())
 
     def test_failed_write_rolls_back(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,22 +172,46 @@ class InstallerTests(unittest.TestCase):
             }
             original_replace = install.os.replace
             calls = 0
+            first_destination = None
 
             def fail_on_second(source, destination):
-                nonlocal calls
+                nonlocal calls, first_destination
                 calls += 1
-                if calls == 2:
+                if first_destination is None:
+                    first_destination = Path(destination)
+                    return original_replace(source, destination)
+                if calls == 2 or Path(destination) == first_destination:
                     raise OSError("simulated failure")
                 return original_replace(source, destination)
 
+            proposed = install.managed_content(selected)
+            proposed["AGENTS.md"] += b"\nupdated content\n"
+            proposed = {
+                "AGENTS.md": proposed["AGENTS.md"],
+                **{relative: data for relative, data in proposed.items() if relative != "AGENTS.md"},
+            }
+            stderr = io.StringIO()
             with mock.patch.object(install.os, "replace", side_effect=fail_on_second):
-                self.assertEqual(install.install(project, selected, True), 3)
+                with mock.patch.object(install, "managed_content", return_value=proposed):
+                    with redirect_stderr(stderr):
+                        self.assertEqual(install.install(project, selected, True), 3)
+            message = stderr.getvalue()
+            self.assertIn("rollback was incomplete", message)
+            match = re.search(r"backup preserved at (.+?)\. Failed restorations", message)
+            self.assertIsNotNone(match)
+            backup = Path(match.group(1))
+            self.assertTrue(backup.is_dir())
+            self.assertTrue(any(path.is_file() for path in backup.rglob("*")))
             after = {
                 path: path.read_bytes()
                 for path in project.rglob("*")
-                if path.is_file()
+                if path.is_file() and ".aes-backup-" not in str(path)
             }
-            self.assertEqual(before, after)
+            self.assertNotEqual(before[project / "AGENTS.md"], after[project / "AGENTS.md"])
+            self.assertEqual(
+                (backup / "AGENTS.md").read_bytes(),
+                before[project / "AGENTS.md"],
+            )
 
 
 if __name__ == "__main__":
