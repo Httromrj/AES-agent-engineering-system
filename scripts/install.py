@@ -2,9 +2,11 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = "manifest.json"
@@ -46,6 +48,35 @@ Follow `AGENTS.md` and the canonical standards in `.agent-engineering/core/`. Be
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def safe_relative_path(relative: str) -> Path:
+    path = Path(relative)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise ValueError(f"Invalid managed path: {relative}")
+    return path
+
+
+def safe_destination(project: Path, relative: str) -> Path:
+    path = safe_relative_path(relative)
+    destination = project / path
+    project_root = project.resolve()
+    resolved = destination.resolve(strict=False)
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError(f"Managed path escapes project: {relative}") from exc
+    current = project_root
+    for part in path.parts:
+        current /= part
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"Managed path uses a symbolic link: {relative}")
+    return destination
+
+
+def validate_destinations(project: Path, relative_paths: list[str]) -> None:
+    for relative in relative_paths:
+        safe_destination(project, relative)
 
 
 def wrapper(source: Path) -> str:
@@ -113,18 +144,23 @@ def managed_content(selected: set[str]) -> dict[str, bytes]:
 
 
 def write_manifest(project: Path, files: list[str]) -> None:
-    records = {rel: digest(project / rel) for rel in sorted(files) if (project / rel).is_file()}
+    manifest_path = safe_destination(project, ".agent-engineering/" + MANIFEST)
+    records = {
+        rel: digest(safe_destination(project, rel))
+        for rel in sorted(files)
+        if safe_destination(project, rel).is_file()
+    }
     data = {
         "version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
         "files": records,
     }
-    (project / ".agent-engineering" / MANIFEST).write_text(
+    manifest_path.write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8"
     )
 
 
 def read_manifest(project: Path) -> dict:
-    path = project / ".agent-engineering" / MANIFEST
+    path = safe_destination(project, ".agent-engineering/" + MANIFEST)
     if not path.is_file():
         raise ValueError(f"Missing {path}; reinstall AES before using --update.")
     try:
@@ -133,7 +169,83 @@ def read_manifest(project: Path) -> dict:
         raise ValueError(f"Invalid AES manifest: {path}") from exc
     if not isinstance(data.get("files"), dict):
         raise ValueError(f"Invalid AES manifest files entry: {path}")
+    for relative in data["files"]:
+        if not isinstance(relative, str):
+            raise ValueError("Invalid AES manifest path entry")
+        safe_destination(project, relative)
     return data
+
+
+def stage_files(project: Path, content: dict[str, bytes]) -> Path:
+    staging = Path(tempfile.mkdtemp(prefix=".aes-stage-", dir=project))
+    try:
+        for relative, data in content.items():
+            destination = safe_destination(project, relative)
+            staged = staging / safe_relative_path(relative)
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_bytes(data)
+            if digest(staged) != hashlib.sha256(data).hexdigest():
+                raise OSError(f"Staging verification failed: {relative}")
+        return staging
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def apply_transaction(project: Path, content: dict[str, bytes], manifest_files: list[str]) -> None:
+    validate_destinations(project, list(content))
+    staging = stage_files(project, content)
+    backup = Path(tempfile.mkdtemp(prefix=".aes-backup-", dir=project))
+    applied: list[tuple[Path, Path | None]] = []
+    created_dirs: list[Path] = []
+    manifest_path = safe_destination(project, ".agent-engineering/" + MANIFEST)
+    try:
+        manifest_data = {
+            "version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
+            "files": {
+                relative: hashlib.sha256(content[relative]).hexdigest()
+                if relative in content
+                else digest(safe_destination(project, relative))
+                for relative in sorted(manifest_files)
+                if relative in content or safe_destination(project, relative).is_file()
+            },
+        }
+        manifest_stage = staging / ".agent-engineering" / MANIFEST
+        manifest_stage.parent.mkdir(parents=True, exist_ok=True)
+        manifest_stage.write_text(json.dumps(manifest_data, indent=2) + "\n", encoding="utf-8")
+        all_paths = [*content, ".agent-engineering/" + MANIFEST]
+        for relative in all_paths:
+            destination = safe_destination(project, relative)
+            backup_path = None
+            if destination.exists():
+                backup_path = backup / safe_relative_path(relative)
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(destination, backup_path)
+            applied.append((destination, backup_path))
+            source = staging / safe_relative_path(relative)
+            missing_parents = []
+            parent = destination.parent
+            while not parent.exists():
+                missing_parents.append(parent)
+                parent = parent.parent
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            created_dirs.extend(missing_parents)
+            os.replace(source, destination)
+    except Exception:
+        for destination, backup_path in reversed(applied):
+            if backup_path is not None and backup_path.exists():
+                os.replace(backup_path, destination)
+            elif destination.exists():
+                destination.unlink()
+        for directory in sorted(created_dirs, key=lambda path: len(path.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def install(project: Path, selected: set[str], update: bool) -> int:
@@ -146,22 +258,30 @@ def install(project: Path, selected: set[str], update: bool) -> int:
             print(str(exc), file=sys.stderr)
             return 3
         conflicts = []
+        for rel, expected in previous.items():
+            path = safe_destination(project, rel)
+            if not path.exists():
+                conflicts.append(f"{rel} (removed locally)")
+            elif digest(path) != expected:
+                conflicts.append(rel)
         for rel, content in proposed.items():
-            path = project / rel
-            if path.exists() and (rel not in previous or digest(path) != previous[rel]):
-                if path.read_bytes() != content:
-                    conflicts.append(rel)
+            path = safe_destination(project, rel)
+            if path.exists() and rel not in previous and path.read_bytes() != content:
+                conflicts.append(rel)
         if conflicts:
             print("Refusing to overwrite locally modified AES files:", file=sys.stderr)
             print("\n".join(f" - {rel}" for rel in conflicts), file=sys.stderr)
             print("Review or remove the local changes, then rerun --update.", file=sys.stderr)
             return 3
-        for rel, content in proposed.items():
-            path = project / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
-        existing = [rel for rel in previous if (project / rel).is_file()]
-        write_manifest(project, list(set(proposed) | set(existing)))
+        existing = [
+            rel for rel in previous
+            if safe_destination(project, rel).is_file()
+        ]
+        try:
+            apply_transaction(project, proposed, list(set(proposed) | set(existing)))
+        except (OSError, ValueError, shutil.Error) as exc:
+            print(f"AES update failed; no changes were committed: {exc}", file=sys.stderr)
+            return 3
         print("AES updated. Local modifications were preserved.")
         return 0
 
@@ -180,11 +300,11 @@ def install(project: Path, selected: set[str], update: bool) -> int:
         print("\n".join(f" - {rel}" for rel in conflicts), file=sys.stderr)
         print("No files were changed.", file=sys.stderr)
         return 3
-    for rel, content in proposed.items():
-        path = project / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-    write_manifest(project, list(proposed))
+    try:
+        apply_transaction(project, proposed, list(proposed))
+    except (OSError, ValueError, shutil.Error) as exc:
+        print(f"AES installation failed; no changes were committed: {exc}", file=sys.stderr)
+        return 3
     print("AES installed. Review the diff and open a fresh agent session.")
     print("Canonical standards: .agent-engineering/core/")
     print("Generated entry points:\n" + "\n".join(f" - {p}" for p in outputs(selected)))

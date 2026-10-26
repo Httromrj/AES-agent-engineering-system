@@ -32,6 +32,17 @@ The updater refuses to overwrite a managed file that was changed locally.
 Review or remove that change before retrying. It never deletes extra files or
 silently merges arbitrary project instructions.
 
+Managed files that are missing locally are treated as local removals and block
+the update. Files removed from a newer AES source are retained as legacy
+managed files rather than deleted automatically. This makes intervention
+explicit and avoids data loss.
+
+Updates are prepared in a temporary staging area, validated against the target
+directory, and applied with backups. If a write fails, the installer restores
+the files changed during that attempt and leaves the previous manifest in
+place. Symbolic links, escaping manifest paths, malformed manifests, and
+other unsafe destinations are rejected before writes begin.
+
 ## Supported adapter targets
 | Agent | Project instruction entry point | Skills |
 |---|---|---|
