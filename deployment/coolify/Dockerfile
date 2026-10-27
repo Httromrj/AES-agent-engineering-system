@@ -13,4 +13,5 @@ COPY --chown=aes:aes scripts/ /app/scripts/
 COPY --chown=aes:aes research/sources.json /app/research/sources.json
 
 USER aes
-CMD ["python", "-c", "import time; time.sleep(2147483647)"]
+EXPOSE 8080
+CMD ["python", "scripts/dashboard.py"]

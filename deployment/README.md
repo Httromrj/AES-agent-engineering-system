@@ -65,17 +65,19 @@ The repository intentionally does not enable this timer or install these files. 
 
 ## Coolify deployment path
 
-Coolify can deploy a GitHub-backed application and run recurring commands inside its running container. This repository does not yet include a production container definition, so do not point Coolify at the repository root and assume it is ready to deploy. First add and review a dedicated, unprivileged runtime definition with Python and this repository's source; keep the runtime separate from any public-facing application.
+Coolify can deploy a GitHub-backed application and run recurring commands inside its running container. The Dockerfile in `deployment/coolify/` runs the authenticated, standard-library dashboard on port 8080 as the unprivileged `aes` user; the weekly research remains a separate scheduled command in the same container and uses the mounted state volume.
 
 Once that runtime is reviewed and deployed:
 
-1. Connect the AES GitHub repository, select the intended branch, choose the Dockerfile build strategy, set Base Directory to the repository root, and Dockerfile Location to `deployment/coolify/Dockerfile`.
-2. Do not configure a public domain or exposed port for the research runner. Do not add provider API keys; this cycle uses public HTTPS feeds and makes no model calls.
-3. Mount persistent storage at `/var/lib/aes-agent-engineering-system` and set `AES_STATE_DIR` to that path. Container-local state is lost when Coolify replaces a container.
-4. Add a Coolify Scheduled Task named `AES weekly innovation research`, with command `python scripts/innovation.py research --per-source 10`, schedule `0 9 * * 1`, and a timeout sized after a manual run. Set the server timezone to the intended local timezone before relying on that schedule.
-5. Run the task once manually and inspect its execution status and output in Coolify. Confirm the dated digest and run metadata are present in the mounted state volume. Configure and test a backup of that volume outside the VPS.
-6. Keep GitHub auto-deploy limited to reviewed changes on the selected branch. A scheduled scan/research run does not approve proposals, edit consumer repositories, or deploy updates to them.
+1. Connect the AES GitHub repository, select the intended branch, choose the Dockerfile build strategy, set Base Directory to the repository root, Dockerfile Location to `deployment/coolify/Dockerfile`, and Ports Exposes to `8080`.
+2. Set a unique `AES_DASHBOARD_PASSWORD` of at least 24 characters and optionally `AES_DASHBOARD_USER` (defaults to `aes`). Keep the password in Coolify's secret environment variable field; never commit it. The app refuses to start without this password. The application itself requires HTTP Basic Authentication on every route and accepts manual runs only as a same-origin POST.
+3. Configure an HTTPS domain for the dashboard. TLS must terminate at Coolify's proxy or another trusted proxy; do not expose the dashboard over plain HTTP. Coolify proxy authentication can add another login layer if desired.
+4. Do not add provider API keys; this cycle uses public HTTPS feeds and makes no model calls.
+5. Mount persistent storage at `/var/lib/aes-agent-engineering-system` and set `AES_STATE_DIR` to that path. Container-local state is lost when Coolify replaces a container.
+6. Add a Coolify Scheduled Task named `AES weekly innovation research`, with command `python scripts/innovation.py research --per-source 10`, schedule `0 12 * * 1` (09:00 in São Paulo while the server timezone is UTC), and a timeout sized after a manual run. Set the server timezone to the intended local timezone before changing that schedule.
+7. Run the task once manually and inspect its execution status and output in Coolify. Confirm the dated digest and run metadata are present in the mounted state volume. The dashboard at the configured HTTPS domain shows the latest run, digest, discovery/proposal counts, and a manual start button for the fixed research command. Configure and test a backup of that volume outside the VPS.
+8. Keep GitHub auto-deploy limited to reviewed changes on the selected branch. A scheduled scan/research run does not approve proposals, edit consumer repositories, or deploy updates to them.
 
 Coolify scheduled tasks require the application container to be running, use the deployment server's timezone, and record execution output. Review the current Coolify documentation for the exact controls and behavior: [scheduled tasks](https://coolify.io/docs/applications/operations/scheduled-tasks), [Dockerfile applications](https://coolify.io/docs/applications/builds/dockerfile), and [persistent storage and backups](https://coolify.io/docs/applications/operations/overview).
 
-The Coolify dashboard and connected GitHub repository are not accessible from this workspace, and the VPS has not been inventoried. Therefore no Coolify resource, deployment, schedule, volume, or server configuration has been created or changed. Complete the read-only VPS preflight through an approved Coolify terminal/session before choosing container limits or installing the runner.
+The panel exposes only operational summaries and the bounded research command; it does not edit AES rules, projects, Git state, or deploy updates. It uses Basic Authentication, same-origin checks, unprivileged execution, and no external model credentials.
