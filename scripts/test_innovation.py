@@ -95,6 +95,15 @@ class InnovationTests(unittest.TestCase):
         self.assertEqual(records[0]["source"], "https://official.example/release/1")
         self.assertIn("See the feature.", records[0]["evidence"])
 
+    def test_parse_atom_prefers_alternate_link_over_earlier_tag_id(self):
+        xml = b'''<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Repository/1/v1.0</id>
+        <updated>2026-10-27T10:00:00Z</updated><link rel="alternate" type="text/html" href="https://github.com/o/r/releases/tag/v1.0"/>
+        <title>v1.0</title><content type="html">Release notes</content></entry></feed>'''
+        records = innovation.parse_feed(xml, {"name": "Releases", "url": "https://github.com/o/r/releases.atom"}, 10)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["source"], "https://github.com/o/r/releases/tag/v1.0")
+        self.assertEqual(records[0]["date"], "2026-10-27")
+
     def test_research_cycle_deduplicates_and_writes_digest(self):
         payload = {"title": "Capability", "source": "https://example.invalid/item", "date": "2026-10-27",
                    "evidence": "Unverified", "limitations": "Feed metadata only", "applicability": "Hypothesis",
@@ -109,8 +118,12 @@ class InnovationTests(unittest.TestCase):
                 innovation.research_cycle(config, 5)
                 innovation.research_cycle(config, 5)
             self.assertEqual(len((state / "research/register.jsonl").read_text(encoding="utf-8").splitlines()), 1)
-            digest = next((state / "research/digests").glob("*.md"))
-            self.assertIn("unverified hypothesis", digest.read_text(encoding="utf-8"))
+            digest = next((state / "research/digests").glob("*.md")).read_text(encoding="utf-8")
+            self.assertIn("unverified hypothesis", digest)
+            # The second, empty run must not erase the first run's candidate.
+            self.assertIn("[Capability]", digest)
+            self.assertIn("No new candidates", digest)
+            self.assertEqual(digest.count("# AES innovation research digest"), 1)
 
 
 if __name__ == "__main__":

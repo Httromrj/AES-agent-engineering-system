@@ -37,6 +37,42 @@
       "topics": ["web-standards", "design", "accessibility", "privacy", "security", "testing"],
       "priority": 2,
       "enabled": true
+    },
+    {
+      "id": "claude-code-releases",
+      "name": "Claude Code releases",
+      "url": "https://github.com/anthropics/claude-code/releases.atom",
+      "authority": "official",
+      "topics": ["agents", "claude-code", "developer-tools", "releases"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "codex-releases",
+      "name": "OpenAI Codex CLI releases",
+      "url": "https://github.com/openai/codex/releases.atom",
+      "authority": "official",
+      "topics": ["agents", "codex", "developer-tools", "releases"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "vscode-blog",
+      "name": "Visual Studio Code Blog",
+      "url": "https://code.visualstudio.com/feed.xml",
+      "authority": "official",
+      "topics": ["developer-tools", "copilot", "agents", "editor"],
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "id": "google-developers-blog",
+      "name": "Google Developers Blog",
+      "url": "https://developers.googleblog.com/feeds/posts/default/",
+      "authority": "official",
+      "topics": ["ai", "models", "agents", "antigravity", "developer-tools"],
+      "priority": 2,
+      "enabled": true
     }
   ]
 }

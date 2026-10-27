@@ -207,17 +207,18 @@ def safe_feed_url(value):
 
 
 def xml_child_text(element, *names):
-    wanted = set(names)
-    for child in element:
-        child_name = child.tag.rsplit("}", 1)[-1]
-        if child_name in wanted:
-            if child_name == "link":
-                if child.attrib.get("href"):
-                    if child.attrib.get("rel", "alternate") in {"alternate", ""}:
-                        return child.attrib["href"].strip()
-                    continue
-                return " ".join("".join(child.itertext()).split())
-            return " ".join("".join(child.itertext()).split())
+    # Names are in preference order: an Atom <link> must win over an earlier <id> such as "tag:github.com,...".
+    for wanted in names:
+        for child in element:
+            if child.tag.rsplit("}", 1)[-1] != wanted:
+                continue
+            if wanted == "link" and child.attrib.get("href"):
+                if child.attrib.get("rel", "alternate") in {"alternate", ""}:
+                    return child.attrib["href"].strip()
+                continue
+            text = " ".join("".join(child.itertext()).split())
+            if text:
+                return text
     return ""
 
 
@@ -369,19 +370,24 @@ def research_cycle(config_path, limit):
     digest_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name != "nt":
         digest_dir.chmod(0o700)
-    digest_path = digest_dir / (datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".md")
-    lines = ["# AES innovation research digest", "", f"Generated: {datetime.now(timezone.utc).isoformat()}",
-             "", "Every item below is an unverified hypothesis from feed metadata. Review the linked primary source, compare alternatives, and map it to a consumer project before recommending or testing it.", ""]
+    now = datetime.now(timezone.utc)
+    digest_path = digest_dir / (now.strftime("%Y-%m-%d") + ".md")
+    # One digest per day; each run appends its own section so later runs never erase earlier leads.
+    lines = [] if digest_path.exists() else [
+        "# AES innovation research digest", "",
+        "Every item below is an unverified hypothesis from feed metadata. Review the linked primary source, compare alternatives, and map it to a consumer project before recommending or testing it.", ""]
+    lines.extend([f"## Run {now.strftime('%H:%M:%S')} UTC", "", f"Generated: {now.isoformat()}", ""])
     for item in added:
         title = re.sub(r"([\\`*_{}\[\]()#+.!|>])", r"\\\1", item["title"])
         evidence = re.sub(r"([\\`*_{}\[\]()#+.!|>])", r"\\\1", item["evidence"])
-        lines.extend([f"## [{title}](<{item['source']}>)", "",
+        lines.extend([f"### [{title}](<{item['source']}>)", "",
                       f"- Source: {item['source_feed']} ({item['source_authority']})",
                       f"- Published: {item['date']}", f"- Topics: {', '.join(item['topics']) or 'unclassified'}",
                       f"- Evidence: {evidence}", "- Assessment: hypothesis; applicability and alternatives still need review.", ""])
     if not added:
-        lines.append("No new candidates were recorded in this run.")
-    digest_path.write_text("\n".join(lines), encoding="utf-8")
+        lines.extend(["No new candidates were recorded in this run.", ""])
+    with digest_path.open("a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
     result = {"started_at": started_at, "finished_at": datetime.now(timezone.utc).isoformat(),
               "duration_seconds": round(time.monotonic() - started, 3), "sources_configured": len(sources),
               "source_counts": source_counts,
