@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import adopt
 import dashboard_auth
 import innovation
+import pipeline
 import translate
 
 HOST = os.environ.get("AES_DASHBOARD_HOST", "0.0.0.0")
@@ -38,7 +39,7 @@ LOGIN_PAGE = PAGE_PATH.with_name("dashboard_login.html").read_text(encoding="utf
 SESSION_COOKIE = "aes_session"
 POST_ROUTES = {"/api/login", "/api/logout", "/api/password", "/api/run", "/api/triage",
                "/api/users/create", "/api/users/reset", "/api/users/role", "/api/users/delete"}
-ADOPTION_ROUTES = {"/api/translate", "/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
+ADOPTION_ROUTES = {"/api/adoption/test", "/api/translate", "/api/adoption/autopilot", "/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
                    "/api/adoptions/deploy", "/api/adoptions/discard", "/api/adoptions/revert"}
 POST_ROUTES |= ADOPTION_ROUTES
 
@@ -123,7 +124,7 @@ def dashboard_status():
                           if _manual_process is not None else None)
         if manual_attempt and not running and not _translated_after_run:
             _translated_after_run = True
-            translate.trigger()
+            pipeline.trigger()
 
     # Per-source health comes from the most recent run that consulted or failed each source.
     last_items, last_errors = {}, {}
@@ -160,6 +161,7 @@ def dashboard_status():
             "triage_counts": triage_counts, "sources": sources, "proposals": proposals[:20],
             "run_history": [_run_summary(row) for row in runs[-MAX_RUN_HISTORY:]],
             "manual_attempt": manual_attempt, "translation": dict(translate.status),
+            "pipeline": dict(pipeline.status), "autopilot": adopt.autopilot_settings(),
             "digest_name": digest_name, "digest": digest, "digest_pt": digest_pt(digest) if digest else ""}
 
 
@@ -214,10 +216,22 @@ def digest_pt(text):
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
+def _rank_fields(rank):
+    signal = rank.get("signal") or {}
+    url = signal.get("hn_url")
+    return {"score": rank.get("score", 0), "popularity": rank.get("popularity", 0), "relevance": rank.get("relevance"),
+            "actionable": rank.get("actionable"), "why": rank.get("why"), "hn_points": signal.get("hn_points"),
+            "hn_comments": signal.get("hn_comments"), "hn_url": _https_or_none(url), "stars": signal.get("stars"),
+            "stars_delta": signal.get("stars_delta")}
+
+
 def dashboard_discoveries():
     register = _read_jsonl(innovation.STATE / "research" / "register.jsonl")
     triage = _triage_map()
     translations = translate.load()
+    ranks = {r["source"].strip().lower(): r for r in pipeline.ranked()}
+    adopted = {(a.get("source") or "").strip().lower() for a in adopt.list_adoptions()
+               if any(res.get("status") == "deployed" for res in (a.get("results") or {}).values())}
     names = {s.get("url"): s.get("name") for s in _load_sources()}
     rows = [row for row in register if row.get("kind") == "discovery" and isinstance(row.get("source"), str)]
     rows.sort(key=lambda row: (str(row.get("date") or ""), str(row.get("recorded_at") or "")), reverse=True)
@@ -237,7 +251,8 @@ def dashboard_discoveries():
             "feed": feed, "feed_name": feed_name, "status": row.get("status"),
             "triage": triage.get(_key(row["source"]), "new"),
             "title_pt": translations.get(_key(row["source"]), {}).get("title"),
-            "summary_pt": translations.get(_key(row["source"]), {}).get("summary")})
+            "summary_pt": translations.get(_key(row["source"]), {}).get("summary"),
+            **_rank_fields(ranks.get(_key(row["source"])) or {}), "adopted": _key(row["source"]) in adopted})
         entry = feeds.setdefault(feed, {"feed": feed, "name": feed_name, "count": 0})
         entry["count"] += 1
     return {"discoveries": discoveries, "total": len(rows),
@@ -386,6 +401,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == "/healthz":
+            # Unauthenticated liveness probe for the container healthcheck; reveals nothing.
+            self._json(200, {"ok": True})
+            return
         if path in {"/", "/login"}:
             signed_in = dashboard_auth.session_user(self._token()) is not None
             if path == "/":
@@ -496,12 +515,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         actor = admin["username"]
         try:
-            if path == "/api/translate":
-                translate.trigger()
+            if path == "/api/adoption/test":
+                result = adopt.test_provider(payload.get("provider"))
+            elif path == "/api/translate":
+                pipeline.trigger()
                 result = {"started": True}
+            elif path == "/api/adoption/autopilot":
+                adopt.save_autopilot(payload.get("enabled"), payload.get("min_score"), payload.get("min_relevance"),
+                                     payload.get("max_per_day"), actor)
+                pipeline.trigger()
+                result = adopt.autopilot_settings()
             elif path == "/api/adoption/settings":
                 adopt.save_settings(payload.get("provider"), payload.get("model"), actor)
-                translate.trigger()
+                pipeline.trigger()
                 result = {"ok": True}
             elif path == "/api/projects/add":
                 result = adopt.add_project(payload.get("repo"), actor)
@@ -564,7 +590,7 @@ def main():
         raise SystemExit("Set AES_DASHBOARD_USER to a non-empty username without colons.")
     server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
     server.daemon_threads = True
-    translate.start_background()
+    pipeline.start_background()
     server.serve_forever()
 
 

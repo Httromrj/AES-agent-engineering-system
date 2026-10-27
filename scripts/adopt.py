@@ -49,11 +49,11 @@ PROVIDERS = {
                "api_key_env": "GEMINI_API_KEY", "model": "gemini-2.5-flash", "in": 0.3, "out": 2.5,
                "note": "Tem cota gratuita no Google AI Studio."},
     "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/v1",
-                 "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat", "in": 0.3, "out": 1.2},
+                 "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat", "in": 0.3, "out": 1.2, "max_output": 8000},
     "xai": {"label": "xAI Grok", "base_url": "https://api.x.ai/v1",
             "api_key_env": "XAI_API_KEY", "model": "grok-4", "in": 3.0, "out": 15.0},
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1",
-               "api_key_env": "OPENAI_API_KEY", "model": "gpt-5-mini", "in": 0.3, "out": 2.0},
+               "api_key_env": "OPENAI_API_KEY", "model": "gpt-5-mini", "in": 0.3, "out": 2.0, "token_param": "max_completion_tokens"},
 }
 MAX_COST_PER_ADOPTION_USD = float(os.environ.get("AES_MAX_COST_PER_ADOPTION_USD", "1.0"))
 
@@ -184,19 +184,48 @@ class ProviderTransport(gateway.OpenAICompatibleTransport):
                           "completion_tokens": response.usage.output_tokens}}
 
 
-def _gateway(transport=None, task="adopt", schema=SKILL_SCHEMA, effort="medium", max_cost=None):
+def _provider_config(pid, model, task, schema, effort, priority):
+    p = PROVIDERS[pid]
+    config = {"id": pid, "enabled": True, "base_url": p["base_url"], "api_key_env": p["api_key_env"], "model": model,
+              "tasks": [task], "kind": p.get("kind", "openai"), "json_mode": p.get("kind") != "anthropic",
+              "schema": schema, "effort": effort, "priority": priority,
+              "input_cost_per_million": p["in"], "output_cost_per_million": p["out"]}
+    for optional in ("max_output", "token_param"):
+        if p.get(optional):
+            config[optional] = p[optional]
+    return config
+
+
+def _gateway(transport=None, task="adopt", schema=SKILL_SCHEMA, effort="medium", max_cost=None, only=None):
+    """The selected provider first; any other provider with a configured key is a fallback."""
     current = settings()
-    p = PROVIDERS[current["provider"]]
-    provider = {"id": current["provider"], "enabled": True, "base_url": p["base_url"], "api_key_env": p["api_key_env"],
-                "model": current["models"][current["provider"]], "tasks": [task], "kind": p.get("kind", "openai"),
-                "json_mode": p.get("kind") != "anthropic", "schema": schema, "effort": effort,
-                "input_cost_per_million": p["in"], "output_cost_per_million": p["out"]}
-    if not os.environ.get(p["api_key_env"]):
+    chosen = only or current["provider"]
+    order = [chosen] + ([] if only else [pid for pid in PROVIDERS if pid != chosen])
+    providers = [_provider_config(pid, current["models"][pid], task, schema, effort, index)
+                 for index, pid in enumerate(order) if os.environ.get(PROVIDERS[pid]["api_key_env"])]
+    if not providers:
+        p = PROVIDERS[chosen]
         raise AdoptionError(f"Configure a variável {p['api_key_env']} no Coolify para usar {p['label']}.")
-    config = {"providers": [provider], "max_attempts": 1, "max_requests_per_run": 2,
+    config = {"providers": providers, "max_attempts": 3, "max_requests_per_run": 3,
               "max_cost_usd_per_run": MAX_COST_PER_ADOPTION_USD if max_cost is None else max_cost,
               "max_concurrency": 2, "timeout_seconds": 180, "max_output_tokens": 16000, "max_input_bytes": 120_000}
     return gateway.Gateway(config, transport=transport or ProviderTransport())
+
+
+TEST_SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}
+
+
+def test_provider(pid, transport=None):
+    """Make one tiny call to a provider and report the outcome in plain language."""
+    if pid not in PROVIDERS:
+        raise AdoptionError("Provedor desconhecido.")
+    messages = [{"role": "system", "content": "Reply with the JSON object {\"ok\": true}."},
+                {"role": "user", "content": "Connection test. Return JSON only."}]
+    try:
+        result = _gateway(transport, task="test", schema=TEST_SCHEMA, effort="low", max_cost=0.05, only=pid)             .complete("test", messages, max_tokens=2000)
+    except gateway.GatewayError as exc:
+        raise AdoptionError(f"Falhou: {exc}") from exc
+    return {"ok": True, "model": result["model"], "message": f"Funcionando com {result['model']}."}
 
 
 def provider_configured():
@@ -297,6 +326,7 @@ def add_project(repo, actor):
         raise AdoptionError("O token tem acesso de leitura, mas não pode fazer commit nesse repositório.")
     repo = info["full_name"]
     entry = {"repo": repo, "branch": info["default_branch"], "private": bool(info.get("private")),
+             "language": info.get("language"), "description": " ".join(str(info.get("description") or "").split())[:300],
              "agents": detect_agents(repo, info["default_branch"]), "added_at": _now(), "added_by": actor}
     with _lock:
         current = [p for p in projects() if p["repo"].lower() != repo.lower()]
@@ -593,3 +623,69 @@ def revert(job_id, repo, actor):
     with _lock:
         _save(record)
     return record
+
+
+# ---------------------------------------------------------------- autopilot
+
+AUTOPILOT_DEFAULTS = {"enabled": False, "min_score": 60, "min_relevance": 6, "max_per_day": 2}
+
+
+def autopilot_settings():
+    data = _read_json(_dir() / "settings.json", {}).get("autopilot") or {}
+    merged = {**AUTOPILOT_DEFAULTS, **{k: v for k, v in data.items() if k in AUTOPILOT_DEFAULTS}}
+    merged["enabled"] = bool(merged["enabled"])
+    return merged
+
+
+def save_autopilot(enabled, min_score, min_relevance, max_per_day, actor):
+    try:
+        values = {"enabled": bool(enabled), "min_score": int(min_score), "min_relevance": int(min_relevance),
+                  "max_per_day": int(max_per_day)}
+    except (TypeError, ValueError) as exc:
+        raise AdoptionError("Valores inválidos para o piloto automático.") from exc
+    if not (0 <= values["min_score"] <= 100 and 0 <= values["min_relevance"] <= 10 and 0 <= values["max_per_day"] <= 10):
+        raise AdoptionError("Use pontuação de 0 a 100, relevância de 0 a 10 e no máximo 10 implantações por dia.")
+    with _lock:
+        data = _read_json(_dir() / "settings.json", {})
+        data["autopilot"] = values
+        _write_json(_dir() / "settings.json", data)
+    _event({"event": "autopilot_changed", "actor": actor, **values})
+
+
+def autopilot_run(ranked, transport=None):
+    """Adopt the best-ranked discoveries automatically, within the daily limit. `ranked` items carry
+    source, score, relevance, actionable, and triage. Returns a short status for the dashboard."""
+    cfg = autopilot_settings()
+    if not cfg["enabled"]:
+        return {"state": "off"}
+    repos = [p["repo"] for p in projects()]
+    if not repos:
+        return {"state": "waiting", "reason": "Cadastre pelo menos um projeto."}
+    if not provider_configured() or not github_token():
+        return {"state": "waiting", "reason": "Configure a chave de IA e o AES_GITHUB_TOKEN."}
+    today = _now()[:10]
+    with _lock:
+        records = {**_records(), **_jobs}
+    used_today = sum(1 for r in records.values() if r.get("created_by") == "autopilot" and r.get("created_at", "").startswith(today))
+    attempted = {(r.get("source") or "").strip().lower() for r in records.values()}
+    candidates = [c for c in ranked
+                  if c.get("score", 0) >= cfg["min_score"] and c.get("actionable") and (c.get("relevance") or 0) >= cfg["min_relevance"]
+                  and c.get("triage") != "dismissed" and c["source"].strip().lower() not in attempted]
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    adopted = []
+    for candidate in candidates[:max(0, cfg["max_per_day"] - used_today)]:
+        record = {"id": uuid.uuid4().hex[:12], "status": "generating", "created_at": _now(), "created_by": "autopilot",
+                  "source": candidate["source"], "note": f"Piloto automático: pontuação {candidate['score']}.",
+                  "repos": repos, "results": {}, "score": candidate["score"]}
+        try:
+            record.update(status="preview", skill=generate(candidate["source"], "", repos, transport))
+            with _lock:
+                _jobs[record["id"]] = record
+            deploy(record["id"], "autopilot", run_async=False)
+            adopted.append(candidate["source"])
+        except AdoptionError as exc:
+            record.update(status="failed", error=str(exc))
+            with _lock:
+                _jobs.pop(record["id"], None)
+                _save(record)
+    return {"state": "on", "adopted": len(adopted), "used_today": used_today + len(adopted), "candidates": len(candidates)}

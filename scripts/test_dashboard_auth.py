@@ -91,6 +91,19 @@ class AuthStoreTests(unittest.TestCase):
         dashboard_auth.delete_user("ana", "aes")
         self.assertIsNone(dashboard_auth.session_user(token))
 
+    def test_sessions_survive_restart_without_storing_tokens(self):
+        dashboard_auth.create_user("ana", "member", "aes")
+        token = dashboard_auth.create_session("ana")
+        stored = dashboard_auth._sessions_path().read_text(encoding="utf-8")
+        self.assertNotIn(token, stored)
+        dashboard_auth._sessions.clear()
+        dashboard_auth._sessions_loaded = False
+        self.assertEqual(dashboard_auth.session_user(token)["username"], "ana")
+        dashboard_auth.end_session(token)
+        dashboard_auth._sessions.clear()
+        dashboard_auth._sessions_loaded = False
+        self.assertIsNone(dashboard_auth.session_user(token))
+
     def test_cli_creates_and_resets_users(self):
         with patch("builtins.print") as out:
             self.assertEqual(dashboard_auth.cli(["add", "ops", "--admin"]), 0)
@@ -132,6 +145,7 @@ class AuthHttpTests(AuthStoreTests):
         return status, data, cookie, response.getheader("Set-Cookie") or ""
 
     def test_full_session_flow(self):
+        self.assertEqual(self.call("GET", "/healthz")[1], {"ok": True})
         status, _, _, response = self.call("GET", "/")
         self.assertEqual((status, response.getheader("Location")), (303, "/login"))
         self.assertEqual(self.call("GET", "/login")[0], 200)

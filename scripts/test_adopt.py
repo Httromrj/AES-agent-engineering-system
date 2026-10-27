@@ -152,6 +152,23 @@ class AdoptTests(unittest.TestCase):
             with self.assertRaisesRegex(adopt.AdoptionError, "GEMINI_API_KEY"):
                 adopt._gateway()
 
+    def test_falls_back_to_other_configured_provider_and_reports_errors(self):
+        tried = []
+
+        def flaky(provider, messages, max_tokens, timeout):
+            tried.append((provider["id"], max_tokens, provider.get("token_param")))
+            if provider["id"] == "google":
+                raise OSError("HTTP 404: models/gemini-test is not found")
+            return {"choices": [{"message": {"content": '{"ok": true}'}}], "usage": {"prompt_tokens": 5, "completion_tokens": 5}}
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "k2"}):
+            self.assertTrue(adopt.test_provider("deepseek", transport=flaky)["ok"])
+            result = adopt._gateway(flaky, task="t", effort="low").complete("t", [{"role": "user", "content": "x"}], max_tokens=100)
+        self.assertEqual(result["provider"], "deepseek")
+        self.assertEqual([t[0] for t in tried[-2:]], ["google", "deepseek"])
+        with self.assertRaisesRegex(adopt.AdoptionError, "gemini-test is not found"):
+            adopt.test_provider("google", transport=flaky)
+
     def test_settings_validate_provider_and_model(self):
         with self.assertRaises(adopt.AdoptionError):
             adopt.save_settings("unknown", "x1", "aes")

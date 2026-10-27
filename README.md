@@ -209,6 +209,22 @@ Choose the provider and model under *AI and GitHub*. Each skill draft is capped 
 `AES_MAX_COST_PER_ADOPTION_USD` (default `1.0`). GitHub access uses `AES_GITHUB_TOKEN`, a fine-grained token
 limited to the chosen repositories with **Contents: read and write**.
 
+### Ranking and autopilot
+
+Every few minutes the dashboard translates and rates new discoveries, collects community signals, and looks
+for fast-rising GitHub repositories in agent, skills, MCP, and design topics. Each discovery gets a 0–100 score:
+
+| Part | Max | From |
+|---|---|---|
+| Popularity | 50 | Hacker News points and comments; GitHub stars and weekly star growth (repository pages only) |
+| Relevance | 40 | The model's 0–10 rating for your registered projects, plus whether it is adoptable at all |
+| Authority | 10 | Official source |
+
+Trending repositories must have forks and a description, since bought stars rarely come with either. With the
+**autopilot** on (*AI and GitHub*), AES adopts the best items above your score and relevance thresholds, up to a
+daily limit, and commits them to every registered project; review and revert them under *Deployments*.
+If the selected provider fails, the other configured keys are tried, and *Test connection* shows the provider's error.
+
 ## Innovation dashboard
 
 A small authenticated web app (`scripts/dashboard.py`, standard library only) to follow the research

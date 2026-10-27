@@ -271,11 +271,64 @@ def authenticate(username, password, client):
     return user
 
 
+# Sessions survive restarts and redeploys: they are kept in memory and mirrored to the state volume, keyed
+# by a SHA-256 of the token so the file never contains a usable cookie value.
+SEEN_WRITE_EVERY = 300
+_sessions_loaded = False
+
+
+def _sessions_path():
+    return innovation.STATE / "private" / "dashboard-sessions.json"
+
+
+def _token_hash(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _expired(session, now):
+    return now - session["seen"] > SESSION_IDLE_SECONDS or now - session["created"] > SESSION_MAX_SECONDS
+
+
+def _load_sessions():
+    """Load persisted sessions once per process. Call with _sessions_lock held."""
+    global _sessions_loaded
+    if _sessions_loaded:
+        return
+    _sessions_loaded = True
+    try:
+        data = json.loads(_sessions_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    now = time.time()
+    for key, session in (data.items() if isinstance(data, dict) else []):
+        if (isinstance(session, dict) and isinstance(session.get("username"), str)
+                and isinstance(session.get("created"), (int, float)) and isinstance(session.get("seen"), (int, float))
+                and not _expired(session, now)):
+            _sessions.setdefault(key, session)
+
+
+def _persist_sessions():
+    """Write live sessions to disk. Call with _sessions_lock held; failures only cost persistence."""
+    now = time.time()
+    try:
+        path = _sessions_path()
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps({k: s for k, s in _sessions.items() if not _expired(s, now)}), encoding="utf-8")
+        if os.name != "nt":
+            temp.chmod(0o600)
+        os.replace(temp, path)
+    except OSError:
+        pass
+
+
 def create_session(username):
     token = secrets.token_urlsafe(32)
-    now = time.monotonic()
+    now = time.time()
     with _sessions_lock:
-        _sessions[token] = {"username": username, "created": now, "seen": now}
+        _load_sessions()
+        _sessions[_token_hash(token)] = {"username": username, "created": now, "seen": now, "written": now}
+        _persist_sessions()
     return token
 
 
@@ -283,15 +336,21 @@ def session_user(token):
     """Resolve a session token to the current user, or None. Re-reads the store so role changes apply."""
     if not token:
         return None
-    now = time.monotonic()
+    now = time.time()
+    key = _token_hash(token)
     with _sessions_lock:
-        session = _sessions.get(token)
+        _load_sessions()
+        session = _sessions.get(key)
         if not session:
             return None
-        if now - session["seen"] > SESSION_IDLE_SECONDS or now - session["created"] > SESSION_MAX_SECONDS:
-            del _sessions[token]
+        if _expired(session, now):
+            del _sessions[key]
+            _persist_sessions()
             return None
         session["seen"] = now
+        if now - session.get("written", 0) > SEEN_WRITE_EVERY:
+            session["written"] = now
+            _persist_sessions()
         username = session["username"]
     if username == builtin_username() and builtin_password():
         return {"username": username, "role": "admin", "must_change": False, "builtin": True}
@@ -303,14 +362,21 @@ def session_user(token):
 
 
 def end_session(token):
+    if not token:
+        return
     with _sessions_lock:
-        _sessions.pop(token, None)
+        _load_sessions()
+        if _sessions.pop(_token_hash(token), None) is not None:
+            _persist_sessions()
 
 
 def revoke_sessions(username, keep=None):
+    keep_key = _token_hash(keep) if keep else None
     with _sessions_lock:
-        for token in [t for t, s in _sessions.items() if s["username"] == username and t != keep]:
-            del _sessions[token]
+        _load_sessions()
+        for key in [k for k, s in _sessions.items() if s["username"] == username and k != keep_key]:
+            del _sessions[key]
+        _persist_sessions()
 
 
 def cli(argv):

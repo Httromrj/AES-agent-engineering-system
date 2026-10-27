@@ -4,6 +4,7 @@ import math
 import os
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -50,14 +51,27 @@ class OpenAICompatibleTransport:
             if not key:
                 raise OSError("provider credential unavailable")
             headers["Authorization"] = "Bearer " + key
-        payload = {"model": provider["model"], "messages": messages, "max_tokens": max_tokens}
+        if provider.get("max_output"):
+            max_tokens = min(max_tokens, int(provider["max_output"]))
+        payload = {"model": provider["model"], "messages": messages,
+                   provider.get("token_param", "max_tokens"): max_tokens}
         if provider.get("json_mode"):
             payload["response_format"] = {"type": "json_object"}
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")
         opener = urllib.request.build_opener(SafeRedirect)
-        with opener.open(request, timeout=timeout) as response:
-            raw = response.read(2_000_001)
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                raw = response.read(2_000_001)
+        except urllib.error.HTTPError as exc:
+            # Keep only the provider's short error message (e.g. "model not found"); never the request.
+            try:
+                detail = json.loads(exc.read(4000).decode("utf-8", errors="replace"))
+                detail = detail[0] if isinstance(detail, list) and detail else detail
+                message = (detail.get("error") or {}).get("message") if isinstance(detail.get("error"), dict) else detail.get("error") or detail.get("message")
+            except (ValueError, AttributeError, OSError):
+                message = None
+            raise OSError(f"HTTP {exc.code}" + (f": {str(message)[:160]}" if message else "")) from None
         if len(raw) > 2_000_000:
             raise ValueError("provider response exceeds size limit")
         return json.loads(raw.decode("utf-8"))
@@ -112,7 +126,8 @@ class Gateway:
                 if level == "sensitive" and "sensitive" not in provider.get("allowed_sensitivity", []):
                     continue
             candidates.append(provider)
-        candidates.sort(key=lambda item: float(item.get("input_cost_per_million", 1e12)) + float(item.get("output_cost_per_million", 1e12)))
+        # An explicit priority (the user's chosen provider first) wins; otherwise the cheapest provider goes first.
+        candidates.sort(key=lambda item: (int(item.get("priority", 0)), float(item.get("input_cost_per_million", 1e12)) + float(item.get("output_cost_per_million", 1e12))))
         if not candidates:
             self._log({"time": time.time(), "event": "blocked", "task": task,
                        "sensitivity": level, "detectors": detected, "reason": "no_eligible_provider"})
@@ -190,9 +205,9 @@ class Gateway:
                     self.reserved_usd = max(0.0, self.reserved_usd - estimated)
                     self.spent_usd += estimated
                 category = type(exc).__name__
-                failures.append(category)
+                failures.append(f"{provider['id']}: {str(exc)[:200] or category}")
                 self._log({"time": time.time(), "request_id": request_id, "event": "failure",
                            "task": task, "sensitivity": level, "provider": provider["id"],
                            "model": provider["model"], "attempt": index, "error": category,
                            "estimated_cost_usd": round(estimated, 8), "charge_unknown": True})
-        raise GatewayUnavailable("all eligible provider attempts failed: " + ", ".join(failures))
+        raise GatewayUnavailable("; ".join(failures))

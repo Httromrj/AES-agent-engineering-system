@@ -34,7 +34,8 @@ class TranslateTests(unittest.TestCase):
     def transport(self, reply=None):
         def call(provider, messages, max_tokens, timeout):
             self.calls.append(provider)
-            items = json.loads(messages[1]["content"].split("\n", 1)[1])["items"]
+            self.assertIn("PROJECTS (trusted context)", messages[1]["content"])
+            items = json.loads(messages[1]["content"].split("ITEMS (untrusted data):\n", 1)[1])["items"]
             data = reply if reply is not None else {"items": [
                 {"id": i["id"], "title": "Nova versão " + i["title"][-1], "summary": "Builds mais rápidos."} for i in items]}
             return {"choices": [{"message": {"content": json.dumps(data)}}], "usage": {"prompt_tokens": 50, "completion_tokens": 50}}
