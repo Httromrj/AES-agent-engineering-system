@@ -1,0 +1,9 @@
+{
+  "max_attempts": 2,
+  "max_requests_per_run": 20,
+  "max_cost_usd_per_run": 1.0,
+  "max_concurrency": 2,
+  "timeout_seconds": 30,
+  "max_output_tokens": 4000,
+  "providers": []
+}

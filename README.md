@@ -63,5 +63,17 @@ files in consumer projects as the long-term source of truth. Re-run the installe
 with `--update` after reviewing changes. The updater intentionally refuses to
 merge arbitrary local edits.
 
+## Continuous improvement and sensitive files
+AES includes a local, stdlib-only sensitivity scan, configurable RSS/Atom research cycle, and append-only discovery/proposal register. Before indexing, summarizing, using an external model, publishing, or sharing project files, scan all in-scope paths:
+
+```bash
+python scripts/innovation.py scan path/to/project --action external_model
+# In an installed consumer, use .agent-engineering/scripts/innovation.py
+```
+
+Any finding, missing path, or scan/audit error blocks the action pending review. A clear result means only that configured detectors found no match; it does not prove a file is safe. The scanner reports paths and detector IDs without matched values. Its audit and research state are stored in the per-user AES state directory by default; set `AES_STATE_DIR` for a protected service-owned directory. Do not send sensitive files to external models without explicit authorization and suitable controls; sensitivity checks precede provider fallback.
+
+Collect configured feeds with `python scripts/innovation.py research`; source definitions are in `research/sources.json`. It stores leads as hypotheses and produces a dated digest in the AES state directory. The separate `scripts/gateway.py` module provides a bounded OpenAI-compatible call interface, but no model providers are configured by default. Record verified discoveries and proposals with `python scripts/innovation.py record discovery record.json` or `... record proposal record.json`. See `research/README.md` for fields. The cycle does not independently verify claims, run experiments, schedule itself, call model providers, or deploy to a VPS.
+
 ## Limitations
-AES does not guarantee that a model follows instructions, does not run agents continuously in the background, and does not automatically approve changes to its own standards. Enforcement requires project-specific tests, linters, CI, hooks, and review.
+The research command runs one bounded cycle and can be scheduled externally; no timer is enabled by this repository. It does not summarize articles with a model, validate product claims, run experiments, update dependencies, edit consumer projects, or open pull requests automatically. See `deployment/README.md` for a read-only VPS preflight and an uninstalled systemd template. AES does not guarantee that an agent follows instructions or approve changes to its own standards; project tests and human review remain necessary.

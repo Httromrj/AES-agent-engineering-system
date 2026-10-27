@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "description": "Curated, editable discovery inputs. Feed entries are leads, not verified recommendations.",
+  "sources": [
+    {
+      "id": "openai-news",
+      "name": "OpenAI News",
+      "url": "https://openai.com/news/rss.xml",
+      "authority": "official",
+      "topics": ["ai", "models", "agents", "product", "research"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "github-changelog",
+      "name": "GitHub Changelog",
+      "url": "https://github.blog/changelog/feed/",
+      "authority": "official",
+      "topics": ["developer-tools", "agents", "security", "accessibility", "product"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "python-insider",
+      "name": "Python Insider",
+      "url": "https://blog.python.org/feeds/posts/default?alt=rss",
+      "authority": "official",
+      "topics": ["python", "releases", "security", "ecosystem"],
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "id": "w3c-blog",
+      "name": "W3C Blog",
+      "url": "https://www.w3.org/blog/feed",
+      "authority": "official",
+      "topics": ["web-standards", "design", "accessibility", "privacy", "security", "testing"],
+      "priority": 2,
+      "enabled": true
+    }
+  ]
+}

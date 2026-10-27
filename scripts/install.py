@@ -25,6 +25,10 @@ Before non-trivial work, read:
 
 For user-facing work, also read `.agent-engineering/core/product-quality.md`. Load the relevant skill from `.agents/skills/` when its description matches the task. Apply investigation → design → implementation → verification → review, with rigor proportional to risk. Preserve behavior, report only checks actually run, and propose rather than silently change permanent standards.
 
+Before indexing, summarizing, sending files to an external model, publishing, or sharing, run `python .agent-engineering/scripts/innovation.py scan <all-in-scope-paths> --action <index|summarize|external_model|publish|share>`. Any finding or scan error blocks the action pending review. Never echo matched values or bypass this gate via provider fallback. A clear scan is not proof of safety; explicit authorization and suitable controls are still required for sensitive data.
+
+At the project's review cadence, assess relevant advances in product capability, technology, AI, architecture, design, user experience, accessibility, and security. Collect leads with `python .agent-engineering/scripts/innovation.py research`; investigate relevant items against the current project and alternatives. Treat announcements as claims until verified, measure proposed changes, and teach the project's agents how to use capabilities that are accepted. Do not upgrade indiscriminately or change consumer projects outside task authorization.
+
 If existing project instructions conflict with AES, surface the conflict and resolve it explicitly; do not silently discard project-specific constraints.
 '''
 CLAUDE = f'''{MARKER}
@@ -92,6 +96,10 @@ def is_allowed_manifest_path(relative: str) -> bool:
     return relative in {
         ".agent-engineering/VERSION",
         ".agent-engineering/improvement-backlog.md",
+        ".agent-engineering/scripts/innovation.py",
+        ".agent-engineering/scripts/gateway.py",
+        ".agent-engineering/research/sources.json",
+        ".agent-engineering/research/gateway.example.json",
     } or (
         len(parts) == 4
         and parts[:2] == (".agent-engineering", "skills")
@@ -153,7 +161,8 @@ def source_files() -> list[Path]:
         for root in (ROOT / "core", ROOT / "skills")
         for path in root.rglob("*")
         if path.is_file()
-    ]
+    ] + [ROOT / "scripts" / "innovation.py", ROOT / "scripts" / "gateway.py",
+         ROOT / "research" / "sources.json", ROOT / "research" / "gateway.example.json"]
 
 
 def managed_content(selected: set[str]) -> dict[str, bytes]:

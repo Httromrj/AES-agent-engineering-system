@@ -8,6 +8,10 @@ required = [
     "skills/product-engineering/SKILL.md", "skills/codebase-investigation/SKILL.md",
     "skills/architecture-review/SKILL.md", "skills/implementation-quality/SKILL.md",
     "skills/continuous-improvement/SKILL.md", "evals/benchmark-tasks.md",
+    "research/README.md", "research/sources.json", "research/gateway.example.json",
+    "research/model-gateway-evaluation-2026-10-27.md", "deployment/README.md",
+    "scripts/vps_preflight.py", "scripts/innovation.py", "scripts/test_innovation.py",
+    "scripts/gateway.py", "scripts/test_gateway.py",
     "scripts/install.py", "scripts/test_install.py"
 ]
 errors = [f"Missing required file: {p}" for p in required if not (ROOT / p).is_file()]

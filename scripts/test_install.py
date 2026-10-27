@@ -2,7 +2,10 @@ from pathlib import Path
 import json
 import hashlib
 import io
+import os
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -28,6 +31,19 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertIn("AGENTS.md", manifest["files"])
             self.assertIn(".agent-engineering/core/workflow.md", manifest["files"])
+            self.assertIn(".agent-engineering/scripts/innovation.py", manifest["files"])
+            self.assertIn(".agent-engineering/scripts/gateway.py", manifest["files"])
+            self.assertIn(".agent-engineering/research/sources.json", manifest["files"])
+            self.assertIn("Before indexing, summarizing", (project / "AGENTS.md").read_text(encoding="utf-8"))
+            child_env = dict(os.environ)
+            child_env["AES_STATE_DIR"] = str(project / "aes-state")
+            scan = subprocess.run(
+                [sys.executable, str(project / ".agent-engineering/scripts/innovation.py"),
+                 "scan", str(project / "AGENTS.md"), "--action", "publish"],
+                capture_output=True, text=True, check=False, env=child_env,
+            )
+            self.assertEqual(scan.returncode, 0, scan.stderr)
+            self.assertTrue((project / "aes-state/private/audit.jsonl").is_file())
             for relative, expected in manifest["files"].items():
                 self.assertEqual(
                     expected,
