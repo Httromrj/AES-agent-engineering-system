@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>AES · Guia rápido</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+@page{size:A4;margin:18mm 17mm 18mm 17mm}
+@page:first{margin:0}
+:root{--ink:#16171a;--ink-2:#4d5058;--ink-3:#7c7f87;--line:#e4e3df;--soft:#f5f5f2;--accent:#0b8a72;--accent-soft:#e6f4f0;--warn:#a96d07}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:10pt/1.55 "Geist",system-ui,sans-serif;color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1,h2,h3{letter-spacing:-.015em;margin:0}
+h2{font-size:17pt;font-weight:600;margin:0 0 3mm}
+h3{font-size:11pt;font-weight:600;margin:5mm 0 1.5mm;break-after:avoid}
+h3.pb{margin-top:0}
+p{margin:0 0 2.6mm}
+.mono,code{font-family:"Geist Mono",ui-monospace,monospace}
+code{font-size:8.6pt;background:var(--soft);border:1px solid var(--line);border-radius:3px;padding:0 3px}
+.muted{color:var(--ink-2)}
+.eyebrow{font:600 7.5pt "Geist Mono",monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+
+/* Cover */
+.cover{height:297mm;padding:26mm 22mm 20mm;display:flex;flex-direction:column;background:#0c0d0f;color:#eceded;page-break-after:always}
+.cover .mark{width:15mm;height:15mm;border-radius:3.5mm;background:#eceded;color:#0c0d0f;display:grid;place-items:center;font:700 10pt "Geist Mono",monospace}
+.cover .eyebrow{color:#45d0b0;margin-top:auto}
+.cover h1{font-size:36pt;line-height:1.05;font-weight:600;letter-spacing:-.03em;margin:5mm 0 6mm}
+.cover h1 span{color:#8e929a}
+.cover .lead{font-size:12.5pt;line-height:1.55;color:#b4b7bd;max-width:135mm}
+.cover .meta{display:flex;flex-wrap:wrap;gap:6mm 12mm;margin-top:16mm;padding-top:6mm;border-top:1px solid #2a2c31;font-size:9pt;color:#8e929a}
+.cover .meta b{display:block;color:#eceded;font-weight:500;font-size:10pt}
+.cover .agents{display:flex;gap:2.5mm;margin-top:9mm;flex-wrap:wrap}
+.cover .agents span{border:1px solid #2e3137;border-radius:99px;padding:1mm 3.5mm;font-size:9pt;color:#c9cbd0}
+
+/* Sections */
+section{page-break-inside:auto}
+.sec{margin-bottom:8mm}
+.sec-head{display:flex;align-items:baseline;gap:4mm;border-bottom:1px solid var(--line);padding-bottom:2.5mm;margin-bottom:4mm}
+.sec-head .n{font:500 9pt "Geist Mono",monospace;color:var(--accent)}
+.pb{page-break-before:always}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4mm}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:3.5mm}
+.box{border:1px solid var(--line);border-radius:2.5mm;padding:3.5mm 4mm;break-inside:avoid}
+.box h4{font-size:9.6pt;font-weight:600;margin:0 0 1mm}
+.box p{font-size:9pt;color:var(--ink-2);margin:0}
+.callout{background:var(--accent-soft);border-radius:2.5mm;padding:3.5mm 4.5mm;font-size:9.4pt;break-inside:avoid;margin:3mm 0}
+.callout.warn{background:#fbf3e3}
+.callout b{font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:9pt;margin:2mm 0 3mm;break-inside:avoid}
+th{text-align:left;font-weight:500;color:var(--ink-3);font-size:8pt;border-bottom:1px solid var(--line);padding:1.8mm 2mm}
+td{border-bottom:1px solid var(--line);padding:2mm;vertical-align:top}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:500;white-space:nowrap}
+ul.clean{list-style:none;padding:0;margin:0}
+ul.clean li{position:relative;padding-left:4.5mm;margin-bottom:1.5mm}
+ul.clean li::before{content:"";position:absolute;left:0;top:2.1mm;width:1.6mm;height:1.6mm;border-radius:50%;background:var(--accent)}
+pre{font:8.6pt/1.6 "Geist Mono",monospace;background:#0c0d0f;color:#d9dbdf;border-radius:2.5mm;padding:3.5mm 4.5mm;margin:2mm 0 3.5mm;white-space:pre-wrap;break-inside:avoid}
+pre .c{color:#7c8088}
+
+/* Pipeline */
+.flow{display:flex;align-items:stretch;gap:0;margin:3mm 0 4mm;break-inside:avoid}
+.flow .st{flex:1;border:1px solid var(--line);border-radius:2.5mm;padding:2.6mm 2.8mm;background:#fff}
+.flow .st b{display:block;font-size:9pt;font-weight:600}
+.flow .st span{font-size:8pt;color:var(--ink-3);line-height:1.4;display:block;margin-top:.6mm}
+.flow .st .k{font:500 7.5pt "Geist Mono",monospace;color:var(--accent)}
+.flow .ar{width:5mm;display:grid;place-items:center;color:var(--ink-3);font-size:10pt}
+.flow.hl .st:nth-child(4n+1){background:var(--soft)}
+
+.foot{margin-top:8mm;padding-top:3mm;border-top:1px solid var(--line);font-size:8pt;color:var(--ink-3);display:flex;justify-content:space-between}
+</style></head><body>
+
+<div class="cover">
+ <div class="mark">AES</div>
+ <div class="eyebrow">Guia rápido · v0.1.0</div>
+ <h1>Agent Engineering System<br><span>Engenharia consistente para agentes de código.</span></h1>
+ <p class="lead">O que é o AES, como ele funciona, como instalar em um projeto e como usar o ciclo de inovação contínua com segurança.</p>
+ <div class="agents"><span>Codex</span><span>Claude Code</span><span>Google Antigravity</span><span>GitHub Copilot</span></div>
+ <div class="meta"><div><b>Versão</b>0.1.0</div><div><b>Data</b>27 de outubro de 2026</div><div><b>Requisitos</b>Python 3.10+ · sem dependências</div><div><b>Licença</b>MIT</div><div><b>Repositório</b>github.com/Httromrj/AES-agent-engineering-system</div></div>
+</div>
+
+<section class="sec">
+ <div class="sec-head"><span class="n">01</span><h2>O que é o AES</h2></div>
+ <p>O <b>Agent Engineering System</b> é um conjunto de padrões de engenharia, <i>skills</i> e ferramentas que faz agentes de código (Codex, Claude Code, Antigravity e Copilot) trabalharem com o mesmo nível de rigor em qualquer projeto. Você escreve as regras <b>uma vez</b>, em um único lugar, e o instalador gera os arquivos que cada agente lê nativamente.</p>
+ <p class="muted">O problema que ele resolve: cada ferramenta procura instruções em um arquivo diferente (<code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>.github/copilot-instructions.md</code>…). Manter cópias manuais gera divergência; o agente acaba pulando investigação, testes ou cuidados de segurança.</p>
+ <h3>Princípios</h3>
+ <div class="grid3">
+  <div class="box"><h4>Fonte única</h4><p>Padrões vivem em <code>core/</code> e <code>skills/</code>. Adaptadores são gerados, nunca editados à mão.</p></div>
+  <div class="box"><h4>Revelação progressiva</h4><p>Regras curtas sempre ativas; skills detalhadas carregadas só quando a tarefa pede.</p></div>
+  <div class="box"><h4>Evidência acima de alegações</h4><p>O agente só relata testes e verificações que realmente executou.</p></div>
+  <div class="box"><h4>Instalação segura</h4><p>Preserva seu CLAUDE.md/AGENTS.md: adiciona um bloco próprio; atualiza com backup e rollback.</p></div>
+  <div class="box"><h4>Melhoria revisada</h4><p>Melhorias viram propostas com evidência; nada se reescreve sozinho.</p></div>
+  <div class="box"><h4>Sem dependências</h4><p>Somente biblioteca padrão do Python; fácil de auditar e de rodar em qualquer lugar.</p></div>
+ </div>
+</section>
+
+<section class="sec">
+ <div class="sec-head"><span class="n">02</span><h2>Como funciona</h2></div>
+ <div class="flow">
+  <div class="st"><span class="k">AUTORIA</span><b>core/ + skills/</b><span>Padrões e procedimentos canônicos</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">INSTALAÇÃO</span><b>install.py</b><span>Copia o núcleo e gera adaptadores</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">PROJETO</span><b>.agent-engineering/</b><span>Cópia versionada + manifest com hashes</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">AGENTES</span><b>Arquivos nativos</b><span>AGENTS.md, CLAUDE.md, skills…</span></div>
+ </div>
+ <h3 class="pb">O que vem no repositório</h3>
+ <table>
+  <tr><th>Pasta</th><th>Conteúdo</th></tr>
+  <tr><td><code>core/</code></td><td>Carta de engenharia, fluxo de trabalho, verificação e riscos, qualidade de produto/UX, protocolo de melhoria contínua e ADR-0001.</td></tr>
+  <tr><td><code>skills/</code></td><td>Cinco skills: <i>codebase-investigation</i>, <i>architecture-review</i>, <i>implementation-quality</i>, <i>product-engineering</i> e <i>continuous-improvement</i>.</td></tr>
+  <tr><td><code>scripts/</code></td><td><code>install.py</code> (instala/atualiza), <code>innovation.py</code> (varredura de sensibilidade, pesquisa e registro), <code>gateway.py</code> (interface opcional para modelos), <code>dashboard.py</code> (painel web), <code>validate.py</code> e <code>vps_preflight.py</code>.</td></tr>
+  <tr><td><code>research/</code></td><td>Fontes RSS/Atom curadas (<code>sources.json</code>) e exemplo de configuração do gateway.</td></tr>
+  <tr><td><code>evals/</code></td><td>Tarefas de referência e rubrica de 0 a 14 pontos para comparar o desempenho dos agentes antes e depois de mudar o AES.</td></tr>
+  <tr><td><code>deployment/</code></td><td>Dockerfile para Coolify, modelo systemd e instruções de operação em VPS.</td></tr>
+ </table>
+ <h3>O fluxo que o agente passa a seguir</h3>
+ <div class="flow hl">
+  <div class="st"><span class="k">1</span><b>Triagem</b><span>Resultado, critérios, risco</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">2</span><b>Investigar</b><span>Código, testes, contratos</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">3</span><b>Desenhar</b><span>Alternativas e falhas</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">4</span><b>Implementar</b><span>Mudança mínima e completa</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">5</span><b>Verificar</b><span>Testes reais, sem suposição</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">6</span><b>Revisar</b><span>O que pode quebrar?</span></div><div class="ar">›</div>
+  <div class="st"><span class="k">7</span><b>Melhorar</b><span>Propor com evidência</span></div>
+ </div>
+ <p class="muted">A profundidade acompanha o risco. Mudanças <b>baixas</b> (texto, estilo) pedem pouco; <b>normais</b> cobrem um fluxo delimitado; <b>altas</b> envolvem autenticação, pagamentos, dados pessoais, migrações ou integrações; <b>sensíveis à produção</b> exigem autorização explícita.</p>
+</section>
+
+<section class="sec pb">
+ <div class="sec-head"><span class="n">03</span><h2>Como aplicar em um projeto</h2></div>
+ <h3>1 · Validar o AES</h3>
+<pre><span class="c"># na pasta do repositório AES</span>
+python scripts/validate.py
+python -m unittest discover -s scripts -p "test_*.py"</pre>
+ <h3>2 · Instalar no projeto</h3>
+<pre><span class="c"># escolha os agentes que o time usa</span>
+python scripts/install.py C:\caminho\do\projeto --agents codex,claude,antigravity,copilot</pre>
+ <table>
+  <tr><th>Agente</th><th>Entrada gerada</th><th>Skills</th></tr>
+  <tr><td>Codex</td><td><code>AGENTS.md</code></td><td><code>.agents/skills/</code></td></tr>
+  <tr><td>Claude Code</td><td><code>CLAUDE.md</code> (importa o <code>AGENTS.md</code>)</td><td><code>.claude/skills/</code></td></tr>
+  <tr><td>Google Antigravity</td><td><code>AGENTS.md</code> + <code>.agents/rules/aes.md</code></td><td><code>.agents/skills/</code></td></tr>
+  <tr><td>GitHub Copilot</td><td><code>.github/copilot-instructions.md</code></td><td><code>.github/skills/</code></td></tr>
+ </table>
+ <div class="callout"><b>Projeto já tem <code>CLAUDE.md</code> ou <code>AGENTS.md</code>?</b> Sem problema. O AES insere um bloco delimitado (<code>&lt;!-- AES:BEGIN --&gt;</code> … <code>&lt;!-- AES:END --&gt;</code>) no topo do arquivo e mantém todo o seu conteúdo abaixo, inclusive frontmatter e quebras de linha. No <code>--update</code>, só o bloco é trocado.</div>
+ <h3>3 · Revisar e confirmar</h3>
+ <ul class="clean">
+  <li>Revise o diff (<code>git diff</code>) e faça commit de <code>.agent-engineering/</code> e dos adaptadores gerados.</li>
+  <li>Abra uma sessão nova do agente e pergunte quais instruções ele carregou, para confirmar a descoberta.</li>
+  <li>Escreva regras específicas do projeto (comandos de build, convenções) <b>fora</b> do bloco do AES, em qualquer lugar do arquivo. Alterações dentro do bloco fazem o <code>--update</code> parar e avisar.</li>
+ </ul>
+ <h3>4 · Atualizar quando o AES evoluir</h3>
+<pre>python scripts/install.py C:\caminho\do\projeto --update</pre>
+ <p class="muted">O atualizador compara cada arquivo (e cada bloco do AES) com o hash do manifest. Se você editou algo gerenciado pelo AES, ele <b>recusa</b> a atualização e aponta o arquivo. A atualização é preparada em área temporária e aplicada com backup; se uma escrita falha, tudo volta ao estado anterior.</p>
+ <div class="callout"><b>Regra de ouro:</b> altere padrões no repositório do AES (<code>core/</code>, <code>skills/</code>), não nas cópias dentro dos projetos. Depois rode <code>--update</code> em cada projeto.</div>
+</section>
+
+<section class="sec">
+ <div class="sec-head"><span class="n">04</span><h2>Ciclo de inovação contínua</h2></div>
+ <p>O AES acompanha novidades de fontes oficiais (OpenAI, GitHub, Claude Code, Codex, VS Code, Google, Python, W3C) e as transforma em uma fila de leitura. Cada item é uma <b>hipótese</b> até alguém verificar a fonte primária.</p>
+ <div class="flow">
+  <div class="st"><span class="k">COLETAR</span><b>research</b><span>Feeds HTTPS, limitados e sem modelo</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">TRIAR</span><b>Painel</b><span>Interessante ou descartar</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">VERIFICAR</span><b>Fonte primária</b><span>Comparar com alternativas</span></div><div class="ar">→</div>
+  <div class="st"><span class="k">PROPOR</span><b>record proposal</b><span>Critério de sucesso e decisão</span></div>
+ </div>
+<pre><span class="c"># coletar novidades (também roda semanalmente no Coolify)</span>
+python scripts/innovation.py research --per-source 10
+
+<span class="c"># registrar uma proposta verificada (JSON com evidência, alternativas, critério de sucesso)</span>
+python scripts/innovation.py record proposal proposta.json
+
+<span class="c"># antes de enviar arquivos a um modelo externo, publicar ou compartilhar</span>
+python scripts/innovation.py scan caminho/ --action external_model</pre>
+ <div class="callout warn"><b>Portão de sensibilidade:</b> qualquer achado (chave, token, e-mail, string de conexão, marcador de confidencialidade) ou falha de leitura <b>bloqueia</b> a ação. O relatório mostra só caminho e tipo de detector, nunca o valor. Um resultado limpo não prova que o arquivo é seguro.</div>
+</section>
+
+<section class="sec">
+ <div class="sec-head"><span class="n">05</span><h2>Boas práticas e limites</h2></div>
+ <div class="grid2">
+  <div class="box"><h4>Faça</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
+   <li>Meça com <code>evals/benchmark-tasks.md</code> antes e depois de mudar padrões.</li>
+   <li>Prefira um teste ou checagem automática a uma instrução vaga.</li>
+   <li>Registre decisões aceitas, rejeitadas e adiadas, com justificativa.</li>
+   <li>Faça backup do volume de estado do painel fora da VPS.</li>
+  </ul></div>
+  <div class="box"><h4>O AES não faz</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
+   <li>Não garante que o agente siga as instruções; revisão humana continua necessária.</li>
+   <li>Não verifica alegações de produtos nem roda experimentos sozinho.</li>
+   <li>Não edita projetos, abre PRs ou faz deploy automaticamente.</li>
+   <li>Não chama modelos externos na pesquisa; o gateway vem sem provedores.</li>
+  </ul></div>
+ </div>
+</section>
+
+<section class="sec pb">
+ <div class="sec-head"><span class="n">06</span><h2>Painel de inovação e acesso</h2></div>
+ <p>O painel web (<code>scripts/dashboard.py</code>) roda no Coolify com HTTPS e autenticação. Ele mostra o estado das pesquisas e permite triar descobertas, sem alterar regras, projetos ou Git.</p>
+ <table>
+  <tr><th>Tela</th><th>Para que serve</th></tr>
+  <tr><td>Visão geral</td><td>Fila de triagem, itens novos, fontes respondendo, última execução e gráfico de atividade.</td></tr>
+  <tr><td>Descobertas</td><td>Caixa de entrada com busca, filtros por fonte e estado, e painel de detalhes.</td></tr>
+  <tr><td>Propostas</td><td>Decisão mais recente de cada proposta (proposta, aceita, rejeitada, adiada).</td></tr>
+  <tr><td>Fontes</td><td>Status de cada feed, tópicos e quantidade de itens.</td></tr>
+  <tr><td>Execuções</td><td>Histórico de ciclos com duração, itens lidos, novos e erros.</td></tr>
+  <tr><td>Digest</td><td>Resumo em Markdown do dia, com uma seção por execução.</td></tr>
+ </table>
+ <h3>Atalhos na caixa de entrada</h3>
+ <p><code>/</code> buscar · <code>J</code>/<code>K</code> navegar · <code>I</code> interessante · <code>D</code> descartar · <code>U</code> voltar à fila · <code>O</code> abrir a fonte · <code>Esc</code> fechar</p>
+ <h3>Usuário e senha</h3>
+ <p>O painel tem tela de login, vários usuários e dois papéis: <b>administrador</b> (gerencia usuários) e <b>membro</b> (usa o painel, faz triagem e roda pesquisas). As senhas são guardadas com hash e, após 5 tentativas erradas, a conta fica bloqueada por 5 minutos. A <b>conta de recuperação</b> vem das variáveis <code>AES_DASHBOARD_USER</code> e <code>AES_DASHBOARD_PASSWORD</code> no Coolify e sempre funciona como administrador.</p>
+ <table>
+  <tr><th>Situação</th><th>O que fazer</th></tr>
+  <tr><td>Criar usuário</td><td><i>Usuários → Novo usuário</i>. O painel mostra uma senha temporária (uma única vez); a pessoa cria a própria senha no primeiro acesso.</td></tr>
+  <tr><td>Trocar a senha</td><td><i>Minha conta → Alterar senha</i>. As outras sessões da conta são encerradas.</td></tr>
+  <tr><td>Esqueci a senha</td><td>Um administrador clica em <i>Redefinir senha</i> e entrega a senha temporária. O link "Esqueci minha senha" no login explica o caminho.</td></tr>
+  <tr><td>Admin sem acesso</td><td>Entre com a conta de recuperação ou rode <code>python scripts/dashboard.py users reset NOME</code> no terminal do container.</td></tr>
+  <tr><td>Sair</td><td>Botão ao lado do seu nome, no rodapé do menu lateral.</td></tr>
+ </table>
+<pre><span class="c"># no terminal do container: listar, criar, redefinir e excluir usuários</span>
+python scripts/dashboard.py users list
+python scripts/dashboard.py users add maria --admin
+python scripts/dashboard.py users reset maria</pre>
+</section>
+
+</body></html>
