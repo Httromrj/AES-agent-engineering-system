@@ -1,8 +1,7 @@
 """Small authenticated dashboard for the AES research runner."""
-import base64
 from collections import deque
 from datetime import datetime, timezone
-import hmac
+from http.cookies import CookieError, SimpleCookie
 import json
 import os
 from pathlib import Path
@@ -12,6 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+import dashboard_auth
 import innovation
 
 HOST = os.environ.get("AES_DASHBOARD_HOST", "0.0.0.0")
@@ -30,6 +30,10 @@ _manual_started_at = None
 
 PAGE_PATH = Path(__file__).with_name("dashboard.html")
 PAGE = PAGE_PATH.read_text(encoding="utf-8")
+LOGIN_PAGE = PAGE_PATH.with_name("dashboard_login.html").read_text(encoding="utf-8")
+SESSION_COOKIE = "aes_session"
+POST_ROUTES = {"/api/login", "/api/logout", "/api/password", "/api/run", "/api/triage",
+               "/api/users/create", "/api/users/reset", "/api/users/role", "/api/users/delete"}
 
 
 def _read_jsonl(path, keep=None):
@@ -213,6 +217,10 @@ def start_research():
         return True
 
 
+CSP = ("default-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+       "script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "AESDashboard"
     sys_version = ""
@@ -221,33 +229,65 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Avoid recording paths, credentials, or user-supplied data in access logs.
         return
 
-    def _authorized(self):
-        header = self.headers.get("Authorization", "")
+    def _token(self):
+        cookie = SimpleCookie()
         try:
-            scheme, encoded = header.split(" ", 1)
-            supplied = base64.b64decode(encoded, validate=True).decode("utf-8")
-        except (ValueError, UnicodeDecodeError):
-            supplied = ""
-            scheme = ""
-        expected = f"{USERNAME}:{PASSWORD}"
-        if scheme.lower() == "basic" and hmac.compare_digest(supplied, expected):
-            return True
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="AES dashboard", charset="UTF-8"')
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-        return False
+            cookie.load(self.headers.get("Cookie", ""))
+        except CookieError:
+            return None
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel else None
 
-    def _json(self, status, payload):
+    def _client(self):
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        return forwarded or self.client_address[0]
+
+    def _require(self, admin=False, allow_pending=False):
+        user = dashboard_auth.session_user(self._token())
+        if not user:
+            self._json(401, {"error": "login required"})
+            return None
+        if user["must_change"] and not allow_pending:
+            self._json(403, {"error": "password change required"})
+            return None
+        if admin and user["role"] != "admin":
+            self._json(403, {"error": "admin role required"})
+            return None
+        return user
+
+    def _session_cookie(self, token, max_age):
+        return f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={max_age}"
+
+    def _json(self, status, payload, cookie=None):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _html(self, page):
+        data = page.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _redirect(self, location):
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _same_origin(self):
         origin = self.headers.get("Origin")
@@ -279,53 +319,121 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return payload
 
     def do_GET(self):
-        if not self._authorized():
-            return
         path = urlsplit(self.path).path
-        if path == "/":
-            data = PAGE.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif path == "/api/status":
+        if path in {"/", "/login"}:
+            signed_in = dashboard_auth.session_user(self._token()) is not None
+            if path == "/":
+                self._html(PAGE) if signed_in else self._redirect("/login")
+            else:
+                self._redirect("/") if signed_in else self._html(LOGIN_PAGE)
+            return
+        if path == "/api/me":
+            user = self._require(allow_pending=True)
+            if user:
+                self._json(200, user)
+            return
+        if not self._require(admin=path == "/api/users"):
+            return
+        if path == "/api/status":
             self._json(200, dashboard_status())
         elif path == "/api/discoveries":
             self._json(200, dashboard_discoveries())
+        elif path == "/api/users":
+            self._json(200, {"users": dashboard_auth.list_users()})
         else:
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if not self._authorized():
-            return
         path = urlsplit(self.path).path
-        if path not in {"/api/run", "/api/triage"}:
+        if path not in POST_ROUTES:
             self._json(404, {"error": "not found"})
             return
         if not self._same_origin():
             return
-        if path == "/api/triage":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            try:
-                saved = set_triage(payload.get("source"), payload.get("state"))
-            except ValueError:
-                self._json(400, {"error": "invalid triage request"})
-                return
-            except OSError:
-                self._json(500, {"error": "triage could not be saved"})
-                return
-            if not saved:
-                self._json(404, {"error": "discovery not found"})
-                return
-            self._json(200, {"saved": True})
+        if path == "/api/login":
+            self._login()
+        elif path == "/api/logout":
+            dashboard_auth.end_session(self._token())
+            self._json(200, {"ok": True}, cookie=self._session_cookie("", 0))
+        elif path == "/api/password":
+            self._change_password()
+        elif path.startswith("/api/users/"):
+            self._users_action(path)
+        elif self._require():
+            self._triage() if path == "/api/triage" else self._run()
+
+    def _login(self):
+        payload = self._read_json_body()
+        if payload is None:
             return
+        try:
+            user = dashboard_auth.authenticate(payload.get("username"), payload.get("password"), self._client())
+        except dashboard_auth.AuthError as exc:
+            self._json(401, {"error": str(exc)})
+            return
+        token = dashboard_auth.create_session(user["username"])
+        self._json(200, user, cookie=self._session_cookie(token, dashboard_auth.SESSION_MAX_SECONDS))
+
+    def _change_password(self):
+        user = self._require(allow_pending=True)
+        payload = self._read_json_body() if user else None
+        if payload is None:
+            return
+        try:
+            dashboard_auth.change_password(user["username"], payload.get("current"), payload.get("new"))
+        except dashboard_auth.AuthError as exc:
+            self._json(400, {"error": str(exc)})
+            return
+        except OSError:
+            self._json(500, {"error": "Não foi possível salvar a nova senha."})
+            return
+        dashboard_auth.revoke_sessions(user["username"], keep=self._token())
+        self._json(200, {"ok": True})
+
+    def _users_action(self, path):
+        admin = self._require(admin=True)
+        payload = self._read_json_body() if admin else None
+        if payload is None:
+            return
+        username = payload.get("username")
+        actor = admin["username"]
+        try:
+            if path == "/api/users/create":
+                password = dashboard_auth.create_user(username, payload.get("role"), actor)
+                self._json(201, {"username": str(username).strip().lower(), "password": password})
+            elif path == "/api/users/reset":
+                self._json(200, {"username": username, "password": dashboard_auth.reset_password(username, actor)})
+            elif path == "/api/users/role":
+                if username == actor:
+                    raise dashboard_auth.AuthError("Você não pode mudar o próprio papel.")
+                dashboard_auth.set_role(username, payload.get("role"), actor)
+                self._json(200, {"ok": True})
+            else:
+                dashboard_auth.delete_user(username, actor)
+                self._json(200, {"ok": True})
+        except dashboard_auth.AuthError as exc:
+            self._json(400, {"error": str(exc)})
+        except OSError:
+            self._json(500, {"error": "Não foi possível salvar o cadastro de usuários."})
+
+    def _triage(self):
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            saved = set_triage(payload.get("source"), payload.get("state"))
+        except ValueError:
+            self._json(400, {"error": "invalid triage request"})
+            return
+        except OSError:
+            self._json(500, {"error": "triage could not be saved"})
+            return
+        if not saved:
+            self._json(404, {"error": "discovery not found"})
+            return
+        self._json(200, {"saved": True})
+
+    def _run(self):
         try:
             started = start_research()
         except OSError:
@@ -338,6 +446,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    if sys.argv[1:2] == ["users"]:
+        sys.exit(dashboard_auth.cli(sys.argv[2:]))
     if not PASSWORD or len(PASSWORD) < 24:
         raise SystemExit("Set AES_DASHBOARD_PASSWORD to a strong password of at least 24 characters.")
     if not USERNAME or ":" in USERNAME:

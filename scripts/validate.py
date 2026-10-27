@@ -10,7 +10,7 @@ required = [
     "skills/continuous-improvement/SKILL.md", "evals/benchmark-tasks.md",
     "research/README.md", "research/sources.json", "research/gateway.example.json",
     "research/model-gateway-evaluation-2026-10-27.md", "deployment/README.md",
-    "scripts/vps_preflight.py", "scripts/dashboard.py", "scripts/dashboard.html", "scripts/innovation.py", "scripts/test_innovation.py",
+    "scripts/vps_preflight.py", "scripts/dashboard.py", "scripts/dashboard.html", "scripts/dashboard_login.html", "scripts/dashboard_auth.py", "scripts/test_dashboard_auth.py", "scripts/innovation.py", "scripts/test_innovation.py",
     "scripts/gateway.py", "scripts/test_gateway.py",
     "scripts/install.py", "scripts/test_install.py"
 ]

@@ -1,4 +1,3 @@
-import base64
 import json
 import tempfile
 import unittest
@@ -92,7 +91,6 @@ class DashboardTests(unittest.TestCase):
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
         host, port = server.server_address
-        auth = "Basic " + base64.b64encode(b"aes:" + b"x" * 24).decode("ascii")
         try:
             with patch.object(dashboard, "PASSWORD", "x" * 24):
                 with self.assertRaises(HTTPError) as unauth:
@@ -100,14 +98,14 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(unauth.exception.code, 401)
                 unauth.exception.close()
                 req = Request(f"http://{host}:{port}/api/run", data=b"{}", method="POST",
-                              headers={"Authorization": auth, "Origin": "https://attacker.example"})
+                              headers={"Origin": "https://attacker.example"})
                 with self.assertRaises(HTTPError) as forbidden:
                     urlopen(req)
                 self.assertEqual(forbidden.exception.code, 403)
                 forbidden.exception.close()
                 triage = Request(f"http://{host}:{port}/api/triage", method="POST",
                                  data=json.dumps({"source": "https://x.example", "state": "dismissed"}).encode(),
-                                 headers={"Authorization": auth, "Origin": "https://attacker.example",
+                                 headers={"Origin": "https://attacker.example",
                                           "Content-Type": "application/json"})
                 with self.assertRaises(HTTPError) as forbidden_triage:
                     urlopen(triage)

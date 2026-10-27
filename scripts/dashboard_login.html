@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · AES</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;700&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#0b0c0e;--panel:#111215;--raise:#17181c;--line:#222429;--line-2:#2e3137;--text:#ecedef;--text-2:#a3a6ad;--text-3:#7b7f87;--accent:#45d0b0;--accent-ink:#04211b;--err:#ef7b7b;--err-soft:rgba(239,123,123,.1);--sans:"Geist",ui-sans-serif,system-ui,sans-serif;--mono:"Geist Mono",ui-monospace,monospace}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--raise:#f3f3f1;--line:#e7e6e3;--line-2:#d8d7d3;--text:#17181a;--text-2:#55585f;--text-3:#7d8088;--accent:#0b8a72;--accent-ink:#fff;--err:#cc3d3d;--err-soft:rgba(204,61,61,.08)}}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;display:grid;place-items:center;padding:24px 16px}
+main{width:100%;max-width:380px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:28px}.mark{width:32px;height:32px;border-radius:8px;background:var(--text);color:var(--bg);display:grid;place-items:center;font:700 11px var(--mono)}
+.brand b{display:block;font-weight:600}.brand span{font-size:12.5px;color:var(--text-3)}
+h1{font-size:22px;font-weight:600;letter-spacing:-.015em;margin:0 0 4px}.sub{color:var(--text-2);margin:0 0 24px}
+label{display:block;font-size:13px;font-weight:500;margin:0 0 6px}
+.field{margin-bottom:16px}
+input{width:100%;height:40px;padding:0 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel);color:var(--text);font:inherit;font-size:14.5px}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.pw{position:relative}.pw input{padding-right:64px}.pw button{position:absolute;right:6px;top:6px;height:28px;padding:0 9px;border:0;border-radius:6px;background:var(--raise);color:var(--text-2);font:inherit;font-size:12px;cursor:pointer}
+.btn{width:100%;height:40px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:600;font-size:14.5px;cursor:pointer;margin-top:4px}.btn:disabled{opacity:.6;cursor:wait}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.error{display:none;background:var(--err-soft);color:var(--err);border-radius:8px;padding:9px 12px;font-size:13.5px;margin-bottom:16px}.error.show{display:block}
+details{margin-top:22px;border-top:1px solid var(--line);padding-top:16px;color:var(--text-2);font-size:13.5px}
+summary{cursor:pointer;color:var(--text);font-weight:500;list-style:none}summary::-webkit-details-marker{display:none}summary::after{content:" ›";color:var(--text-3)}details[open] summary::after{content:" ⌄"}
+details ol{padding-left:18px;margin:10px 0 0}details li{margin-bottom:8px}
+code{font:12.5px var(--mono);background:var(--raise);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+.foot{margin-top:28px;font-size:12px;color:var(--text-3)}
+</style></head><body><main>
+<div class="brand"><div class="mark">AES</div><div><b>Agent Engineering</b><span>Painel de inovação</span></div></div>
+<h1>Entrar</h1><p class="sub">Use sua conta do painel.</p>
+<div class="error" id="err" role="alert"></div>
+<form id="form" novalidate>
+ <div class="field"><label for="u">Usuário</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></div>
+ <div class="field"><label for="p">Senha</label><div class="pw"><input id="p" name="password" type="password" autocomplete="current-password" required><button type="button" id="toggle" aria-label="Mostrar senha">Mostrar</button></div></div>
+ <button class="btn" id="submit" type="submit">Entrar</button>
+</form>
+<details><summary>Esqueci minha senha</summary>
+ <ol>
+  <li>Peça a um administrador para abrir <b>Usuários</b> no painel e clicar em <b>Redefinir senha</b>. Você recebe uma senha temporária e cria uma nova no primeiro acesso.</li>
+  <li>Se você é o administrador, entre com a conta de recuperação definida no servidor (<code>AES_DASHBOARD_USER</code> e <code>AES_DASHBOARD_PASSWORD</code> no Coolify).</li>
+  <li>Ou, no terminal do container: <code>python scripts/dashboard.py users reset SEU_USUARIO</code></li>
+ </ol>
+</details>
+<p class="foot">Após 5 tentativas erradas, o acesso fica bloqueado por 5 minutos.</p>
+</main><script>
+const f=document.getElementById('form'),err=document.getElementById('err'),btn=document.getElementById('submit'),p=document.getElementById('p');
+document.getElementById('toggle').onclick=e=>{const show=p.type==='password';p.type=show?'text':'password';e.target.textContent=show?'Ocultar':'Mostrar';e.target.setAttribute('aria-label',show?'Ocultar senha':'Mostrar senha')};
+f.onsubmit=async e=>{e.preventDefault();err.classList.remove('show');const username=f.username.value.trim(),password=p.value;
+ if(!username||!password){err.textContent='Informe usuário e senha.';err.classList.add('show');return}
+ btn.disabled=true;btn.textContent='Entrando…';
+ try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});const d=await r.json().catch(()=>({}));
+  if(r.ok){location.replace('/');return}err.textContent=d.error||'Não foi possível entrar.'}catch(x){err.textContent='Sem conexão com o servidor.'}
+ err.classList.add('show');btn.disabled=false;btn.textContent='Entrar';p.select()};
+</script></body></html>
