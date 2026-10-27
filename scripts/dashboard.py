@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import adopt
 import dashboard_auth
@@ -417,7 +417,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if user:
                 self._json(200, user)
             return
-        if not self._require(admin=path in {"/api/users", "/api/adoption/config"}):
+        if not self._require(admin=path in {"/api/users", "/api/adoption/config", "/api/adoption/models"}):
+            return
+        if path == "/api/adoption/models":
+            provider = (parse_qs(urlsplit(self.path).query).get("provider") or [""])[0]
+            try:
+                self._json(200, {"models": adopt.list_models(provider)})
+            except adopt.AdoptionError as exc:
+                self._json(400, {"error": str(exc)})
             return
         if path == "/api/status":
             self._json(200, dashboard_status())

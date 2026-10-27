@@ -15,6 +15,7 @@ import json
 import os
 import re
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -754,3 +755,55 @@ def autopilot_run(ranked, transport=None):
                 _jobs.pop(record["id"], None)
                 _save(record)
     return {"state": "on", "adopted": len(adopted), "used_today": used_today + len(adopted), "candidates": len(candidates)}
+
+
+# ---------------------------------------------------------------- model catalog
+
+NON_CHAT_MODEL = re.compile(r"(?i)embed|tts|whisper|dall-e|image|audio|moderation|realtime|transcribe|search|aqa|imagen|veo|learnlm|vision-preview")
+_model_cache = {}
+MODEL_CACHE_SECONDS = 600
+
+
+def list_models(pid):
+    """Chat models available to the configured key, newest-looking names first; cached for ten minutes."""
+    if pid not in PROVIDERS:
+        raise AdoptionError("Provedor desconhecido.")
+    p = PROVIDERS[pid]
+    key = secret(p["api_key_env"])
+    if not key:
+        raise AdoptionError(f"Cadastre a chave de {p['label']} para ver os modelos.")
+    cached = _model_cache.get(pid)
+    if cached and cached[0] == key[-8:] and time.time() - cached[1] < MODEL_CACHE_SECONDS:
+        return cached[2]
+    models = []
+    if p.get("kind") == "anthropic":
+        try:
+            import anthropic
+        except ImportError as exc:
+            raise AdoptionError("O SDK da Anthropic não está instalado no servidor.") from exc
+        try:
+            for model in anthropic.Anthropic(api_key=key, timeout=20.0).models.list():
+                models.append({"id": model.id, "label": getattr(model, "display_name", None) or model.id})
+        except anthropic.APIStatusError as exc:
+            raise AdoptionError(f"A Anthropic recusou a listagem (HTTP {exc.status_code}).") from exc
+        except anthropic.APIConnectionError as exc:
+            raise AdoptionError("Não foi possível conectar à Anthropic.") from exc
+    else:
+        request = urllib.request.Request(p["base_url"].rstrip("/") + "/models",
+                                         headers={"Authorization": "Bearer " + key, "Accept": "application/json"})
+        try:
+            with urllib.request.build_opener(innovation.SafeRedirect).open(request, timeout=20) as response:
+                data = json.loads(response.read(2_000_000).decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise AdoptionError(f"{p['label']} recusou a listagem (HTTP {exc.code}). Confira a chave.") from exc
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            raise AdoptionError(f"Não foi possível listar os modelos de {p['label']}.") from exc
+        for item in data.get("data", []) if isinstance(data, dict) else []:
+            model_id = str(item.get("id", "")).removeprefix("models/")
+            if model_id and not NON_CHAT_MODEL.search(model_id):
+                models.append({"id": model_id, "label": item.get("display_name") or model_id})
+    models = [m for m in {m["id"]: m for m in models}.values() if re.fullmatch(r"[A-Za-z0-9._:/-]{2,80}", m["id"])]
+    if p.get("kind") != "anthropic":  # Anthropic already returns newest first
+        models.sort(key=lambda m: m["id"], reverse=True)
+    _model_cache[pid] = (key[-8:], time.time(), models)
+    return models

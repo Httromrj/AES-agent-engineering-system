@@ -193,6 +193,34 @@ class AdoptTests(unittest.TestCase):
         log = (adopt._dir() / "adoptions.jsonl").read_text(encoding="utf-8")
         self.assertNotIn(key, log)
 
+    def test_lists_chat_models_for_the_configured_key(self):
+        payload = {"data": [{"id": "models/gemini-3-flash"}, {"id": "models/gemini-2.5-pro"},
+                            {"id": "models/text-embedding-004"}, {"id": "models/imagen-4"}]}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, limit):
+                return json.dumps(payload).encode()
+
+        class Opener:
+            def open(self, request, timeout):
+                assert request.full_url.endswith("/v1beta/openai/models")
+                assert request.get_header("Authorization") == "Bearer test-key"
+                return Response()
+
+        adopt._model_cache.clear()
+        with patch.object(adopt.urllib.request, "build_opener", return_value=Opener()):
+            models = adopt.list_models("google")
+        self.assertEqual([m["id"] for m in models], ["gemini-3-flash", "gemini-2.5-pro"])
+        with patch.dict(os.environ, {"XAI_API_KEY": ""}):
+            with self.assertRaisesRegex(adopt.AdoptionError, "Cadastre a chave de xAI Grok"):
+                adopt.list_models("xai")
+
     def test_settings_validate_provider_and_model(self):
         with self.assertRaises(adopt.AdoptionError):
             adopt.save_settings("unknown", "x1", "aes")
