@@ -50,6 +50,48 @@ COPILOT = f'''{MARKER}
 
 Follow `AGENTS.md` and the canonical standards in `.agent-engineering/core/`. Before non-trivial changes, inspect relevant implementation, tests, data models, integrations, and conventions. Design for the complete workflow and appropriate failure states. Run relevant checks and report what was verified. Propose evidence-based improvements; do not silently rewrite permanent standards.
 '''
+# Entry points every agent already reads. Projects usually have their own copy, so AES manages only a
+# delimited block inside them and leaves everything outside the block untouched.
+BLOCK_FILES = {"AGENTS.md", "CLAUDE.md", ".github/copilot-instructions.md"}
+BLOCK_BEGIN = ("<!-- AES:BEGIN · Managed by Agent Engineering System. Edit outside this block; "
+               "its contents are replaced by install.py --update. -->")
+BLOCK_END = "<!-- AES:END -->"
+BLOCK_RE = re.compile(r"<!-- AES:BEGIN[^\n]*-->\n(.*?)<!-- AES:END -->\n?", re.S)
+FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
+
+
+def render_block(template: str) -> str:
+    body = template.replace(MARKER + "\n", "", 1).strip()
+    return f"{BLOCK_BEGIN}\n{body}\n{BLOCK_END}\n"
+
+
+def block_hash(text: str) -> str:
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
+def read_text_normalized(path: Path) -> tuple[str, bool]:
+    raw = path.read_bytes().decode("utf-8")
+    return raw.replace("\r\n", "\n"), "\r\n" in raw
+
+
+def find_block(text: str):
+    return BLOCK_RE.search(text)
+
+
+def merge_block(existing: str | None, block: str) -> str:
+    """Place the AES block in a file, preserving all project content outside it."""
+    if existing is None or not existing.strip():
+        return block
+    match = find_block(existing)
+    if match:
+        return existing[:match.start()] + block + existing[match.end():]
+    if existing.startswith(MARKER):
+        # Unmodified whole-file output from AES 0.1.0; the caller verified its hash.
+        return block
+    front = FRONTMATTER_RE.match(existing)
+    if front:
+        return existing[:front.end()] + "\n" + block + "\n" + existing[front.end():].lstrip("\n")
+    return block + "\n" + existing.lstrip("\n")
 
 
 def digest(path: Path) -> str:
@@ -175,7 +217,10 @@ def managed_content(selected: set[str]) -> dict[str, bytes]:
     content[".agent-engineering/improvement-backlog.md"] = (
         b"# Improvement Backlog\n\nRecord evidence-based proposals here. Do not silently modify permanent standards.\n"
     )
-    content.update({rel: value.encode("utf-8") for rel, value in outputs(selected).items()})
+    content.update({
+        rel: (render_block(value) if rel in BLOCK_FILES else value).encode("utf-8")
+        for rel, value in outputs(selected).items()
+    })
     for target in targets(selected):
         for source in sources:
             content[(Path(target) / source.parent.name / "SKILL.md").as_posix()] = (
@@ -208,8 +253,14 @@ def read_manifest(project: Path) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid AES manifest: {path}") from exc
-    if set(data) != {"version", "files"}:
+    if set(data) not in ({"version", "files"}, {"version", "files", "blocks"}):
         raise ValueError("Invalid AES manifest structure")
+    blocks = data.setdefault("blocks", {})
+    if not isinstance(blocks, dict) or any(
+        rel not in BLOCK_FILES or not isinstance(value, str) or not HASH_PATTERN.fullmatch(value)
+        for rel, value in blocks.items()
+    ):
+        raise ValueError("Invalid AES manifest blocks entry")
     if not isinstance(data["version"], str) or not VERSION_PATTERN.fullmatch(data["version"]):
         raise ValueError("Invalid AES manifest version")
     if not isinstance(data["files"], dict) or not data["files"]:
@@ -241,7 +292,8 @@ def stage_files(project: Path, content: dict[str, bytes]) -> Path:
         raise
 
 
-def apply_transaction(project: Path, content: dict[str, bytes], manifest_files: list[str]) -> None:
+def apply_transaction(project: Path, content: dict[str, bytes], manifest_files: list[str],
+                      blocks: dict[str, str] | None = None) -> None:
     validate_destinations(project, list(content))
     staging = stage_files(project, content)
     backup = Path(tempfile.mkdtemp(prefix=".aes-backup-", dir=project))
@@ -259,6 +311,8 @@ def apply_transaction(project: Path, content: dict[str, bytes], manifest_files: 
                 if relative in content or safe_destination(project, relative).is_file()
             },
         }
+        if blocks:
+            manifest_data["blocks"] = dict(sorted(blocks.items()))
         manifest_stage = staging / ".agent-engineering" / MANIFEST
         manifest_stage.parent.mkdir(parents=True, exist_ok=True)
         manifest_stage.write_text(json.dumps(manifest_data, indent=2) + "\n", encoding="utf-8")
@@ -323,50 +377,87 @@ def apply_transaction(project: Path, content: dict[str, bytes], manifest_files: 
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def merge_entry_points(project: Path, proposed: dict[str, bytes]) -> tuple[dict[str, bytes], dict[str, str]]:
+    """Merge AES blocks into entry-point files. Returns merged file bytes and block hashes."""
+    merged, hashes = {}, {}
+    for rel in sorted(BLOCK_FILES & set(proposed)):
+        block = proposed[rel].decode("utf-8").replace("\r\n", "\n")
+        match = find_block(block)
+        if match is None:
+            raise ValueError(f"Generated content for {rel} has no AES block")
+        path = safe_destination(project, rel)
+        existing, crlf = read_text_normalized(path) if path.is_file() else (None, False)
+        text = merge_block(existing, block[match.start():match.end()].rstrip("\n") + "\n")
+        if not text.endswith("\n"):
+            text += "\n"
+        merged[rel] = (text.replace("\n", "\r\n") if crlf else text).encode("utf-8")
+        hashes[rel] = block_hash(match.group(1))
+    return merged, hashes
+
+
 def install(project: Path, selected: set[str], update: bool) -> int:
     proposed = managed_content(selected)
     aes = project / ".agent-engineering"
+    whole_files = {rel: data for rel, data in proposed.items() if rel not in BLOCK_FILES}
     if update:
         try:
-            previous = read_manifest(project)["files"]
+            manifest = read_manifest(project)
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 3
+        previous, previous_blocks = manifest["files"], manifest["blocks"]
         conflicts = []
-        for rel, expected in previous.items():
-            path = safe_destination(project, rel)
-            if not path.exists():
-                conflicts.append(f"{rel} (removed locally)")
-            elif digest(path) != expected:
-                conflicts.append(rel)
-        for rel, content in proposed.items():
-            path = safe_destination(project, rel)
-            if path.exists() and rel not in previous and path.read_bytes() != content:
-                conflicts.append(rel)
+        try:
+            for rel, expected in previous.items():
+                path = safe_destination(project, rel)
+                if not path.exists():
+                    conflicts.append(f"{rel} (removed locally)")
+                elif digest(path) != expected:
+                    conflicts.append(f"{rel} (edited; AES 0.1.0 managed the whole file)" if rel in BLOCK_FILES else rel)
+            for rel, expected in previous_blocks.items():
+                path = safe_destination(project, rel)
+                if not path.is_file():
+                    conflicts.append(f"{rel} (removed locally)")
+                    continue
+                match = find_block(read_text_normalized(path)[0])
+                if match is None:
+                    conflicts.append(f"{rel} (AES block removed)")
+                elif block_hash(match.group(1)) != expected:
+                    conflicts.append(f"{rel} (edited inside the AES block)")
+            for rel, content in whole_files.items():
+                path = safe_destination(project, rel)
+                if path.exists() and rel not in previous and path.read_bytes() != content:
+                    conflicts.append(rel)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            print(f"AES update failed; no changes were committed: {exc}", file=sys.stderr)
+            return 3
         if conflicts:
             print("Refusing to overwrite locally modified AES files:", file=sys.stderr)
             print("\n".join(f" - {rel}" for rel in conflicts), file=sys.stderr)
-            print("Review or remove the local changes, then rerun --update.", file=sys.stderr)
+            print("Move your edits outside the AES block (or review them), then rerun --update.", file=sys.stderr)
             return 3
         existing = [
             rel for rel in previous
-            if safe_destination(project, rel).is_file()
+            if rel not in BLOCK_FILES and safe_destination(project, rel).is_file()
         ]
         try:
-            apply_transaction(project, proposed, list(set(proposed) | set(existing)))
+            merged, hashes = merge_entry_points(project, proposed)
+            kept_blocks = {rel: h for rel, h in previous_blocks.items() if rel not in hashes}
+            apply_transaction(project, {**whole_files, **merged},
+                              list(set(whole_files) | set(existing)), {**kept_blocks, **hashes})
         except RecoveryError as exc:
             print(f"AES update recovery requires intervention: {exc}", file=sys.stderr)
             return 3
-        except (OSError, ValueError, shutil.Error) as exc:
+        except (OSError, ValueError, UnicodeDecodeError, shutil.Error) as exc:
             print(f"AES update failed; no changes were committed: {exc}", file=sys.stderr)
             return 3
-        print("AES updated. Local modifications were preserved.")
+        print("AES updated. Project instructions outside the AES blocks were preserved.")
         return 0
 
     if aes.exists():
         print("Refusing to overwrite existing .agent-engineering/; use --update for a managed installation.", file=sys.stderr)
         return 3
-    conflicts = [rel for rel in outputs(selected) if (project / rel).exists()]
+    conflicts = [rel for rel in outputs(selected) if rel not in BLOCK_FILES and (project / rel).exists()]
     conflicts += [
         str(Path(target) / source.parent.name / "SKILL.md")
         for target in targets(selected)
@@ -374,34 +465,36 @@ def install(project: Path, selected: set[str], update: bool) -> int:
         if (project / target / source.parent.name / "SKILL.md").exists()
     ]
     if conflicts:
-        print("Refusing to overwrite existing instruction or skill files:", file=sys.stderr)
+        print("Refusing to overwrite existing AES-named files:", file=sys.stderr)
         print("\n".join(f" - {rel}" for rel in conflicts), file=sys.stderr)
         print("No files were changed.", file=sys.stderr)
         return 3
     try:
-        apply_transaction(project, proposed, list(proposed))
+        merged, hashes = merge_entry_points(project, proposed)
+        apply_transaction(project, {**whole_files, **merged}, list(whole_files), hashes)
     except RecoveryError as exc:
         print(f"AES installation recovery requires intervention: {exc}", file=sys.stderr)
         return 3
-    except (OSError, ValueError, shutil.Error) as exc:
+    except (OSError, ValueError, UnicodeDecodeError, shutil.Error) as exc:
         print(f"AES installation failed; no changes were committed: {exc}", file=sys.stderr)
         return 3
     print("AES installed. Review the diff and open a fresh agent session.")
     print("Canonical standards: .agent-engineering/core/")
-    print("Generated entry points:\n" + "\n".join(f" - {p}" for p in outputs(selected)))
+    print("Entry points (AES block added; existing content preserved):")
+    print("\n".join(f" - {p}" for p in outputs(selected)))
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Install or safely update AES without overwriting local instructions."
+        description="Install or safely update AES, merging a managed block into existing agent instructions."
     )
     parser.add_argument("project", type=Path)
     parser.add_argument("--agents", default="codex,claude,antigravity,copilot")
     parser.add_argument(
         "--update",
         action="store_true",
-        help="Update a prior AES installation; refuse locally modified managed files.",
+        help="Update a prior AES installation; replace only AES blocks and refuse locally modified managed files.",
     )
     args = parser.parse_args()
     project = args.project.resolve()

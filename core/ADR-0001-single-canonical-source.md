@@ -7,7 +7,7 @@
 Coding-agent tools use overlapping but non-identical instruction and skill discovery mechanisms. Manually maintaining full copies creates drift.
 
 ## Decision
-Author common standards and skill procedures once in this repository. Install canonical material under `.agent-engineering/` in each consumer project. Generate native entry-point files and skill wrappers that point to canonical material. Refuse to overwrite existing instructions.
+Author common standards and skill procedures once in this repository. Install canonical material under `.agent-engineering/` in each consumer project. Generate native entry-point files and skill wrappers that point to canonical material. Shared entry points (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`) receive a delimited AES block merged into any existing file, so project-specific instructions are preserved; AES-named files and skills are never overwritten.
 
 ## Consequences
 - One authored source reduces drift.

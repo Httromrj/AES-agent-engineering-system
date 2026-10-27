@@ -29,7 +29,8 @@ class InstallerTests(unittest.TestCase):
             manifest = json.loads(
                 (project / ".agent-engineering/manifest.json").read_text(encoding="utf-8")
             )
-            self.assertIn("AGENTS.md", manifest["files"])
+            self.assertIn("AGENTS.md", manifest["blocks"])
+            self.assertNotIn("AGENTS.md", manifest["files"])
             self.assertIn(".agent-engineering/core/workflow.md", manifest["files"])
             self.assertIn(".agent-engineering/scripts/innovation.py", manifest["files"])
             self.assertIn(".agent-engineering/scripts/gateway.py", manifest["files"])
@@ -56,15 +57,92 @@ class InstallerTests(unittest.TestCase):
                 ),
             )
 
-    def test_update_preserves_local_changes(self):
+    def test_update_preserves_project_content_outside_block(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             selected = {"codex"}
             self.assertEqual(install.install(project, selected, False), 0)
             agents = project / "AGENTS.md"
             agents.write_text(agents.read_text(encoding="utf-8") + "\nLocal rule.\n", encoding="utf-8")
-            self.assertEqual(install.install(project, selected, True), 3)
+            self.assertEqual(install.install(project, selected, True), 0)
             self.assertIn("Local rule.", agents.read_text(encoding="utf-8"))
+
+    def test_update_refuses_edits_inside_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            agents = project / "AGENTS.md"
+            edited = agents.read_text(encoding="utf-8").replace("Shared AI Engineering Guidance", "Edited inside")
+            agents.write_text(edited, encoding="utf-8")
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(install.install(project, selected, True), 3)
+            self.assertIn("edited inside the AES block", stderr.getvalue())
+            self.assertEqual(agents.read_text(encoding="utf-8"), edited)
+
+    def test_install_merges_into_existing_claude_md(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            own = "# My project\n\nAlways run `npm test` before committing.\n"
+            (project / "CLAUDE.md").write_bytes(own.replace("\n", "\r\n").encode("utf-8"))
+            self.assertEqual(install.install(project, {"claude"}, False), 0)
+            raw = (project / "CLAUDE.md").read_bytes().decode("utf-8")
+            self.assertNotIn("\n", raw.replace("\r\n", ""))
+            text = raw.replace("\r\n", "\n")
+            self.assertTrue(text.startswith("<!-- AES:BEGIN"))
+            self.assertIn("@AGENTS.md", text)
+            self.assertTrue(text.endswith(own))
+            self.assertTrue((project / "AGENTS.md").is_file())
+            self.assertEqual(install.install(project, {"claude"}, True), 0)
+            self.assertEqual(text.count("AES:BEGIN"), 1)
+            self.assertTrue((project / "CLAUDE.md").read_bytes().decode("utf-8").replace("\r\n", "\n").endswith(own))
+
+    def test_install_keeps_frontmatter_first(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "AGENTS.md").write_text("---\ndescription: project\n---\n# Rules\n", encoding="utf-8")
+            self.assertEqual(install.install(project, {"codex"}, False), 0)
+            text = (project / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("---\ndescription: project\n---\n\n<!-- AES:BEGIN"))
+            self.assertTrue(text.endswith("# Rules\n"))
+
+    def test_update_replaces_only_the_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            agents = project / "AGENTS.md"
+            agents.write_text("# Team notes\n\n" + agents.read_text(encoding="utf-8") + "\nLocal rule.\n", encoding="utf-8")
+            proposed = install.managed_content(selected)
+            proposed["AGENTS.md"] = proposed["AGENTS.md"].replace(b"<!-- AES:END -->", b"New AES guidance.\n<!-- AES:END -->")
+            with mock.patch.object(install, "managed_content", return_value=proposed):
+                self.assertEqual(install.install(project, selected, True), 0)
+            text = agents.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("# Team notes\n"))
+            self.assertIn("New AES guidance.", text)
+            self.assertTrue(text.endswith("Local rule.\n"))
+            self.assertEqual(install.install(project, selected, True), 0)
+
+    def test_update_migrates_unmodified_whole_file_from_0_1_0(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            selected = {"codex"}
+            self.assertEqual(install.install(project, selected, False), 0)
+            agents = project / "AGENTS.md"
+            agents.write_text(install.AGENTS, encoding="utf-8")
+            manifest_path = project / ".agent-engineering/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["AGENTS.md"] = install.digest(agents)
+            del manifest["blocks"]
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(install.install(project, selected, True), 0)
+            text = agents.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("<!-- AES:BEGIN"))
+            self.assertNotIn(install.MARKER, text)
+            migrated = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertNotIn("AGENTS.md", migrated["files"])
+            self.assertIn("AGENTS.md", migrated["blocks"])
 
     def test_update_accepts_unmodified_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -200,11 +278,12 @@ class InstallerTests(unittest.TestCase):
                     raise OSError("simulated failure")
                 return original_replace(source, destination)
 
+            target = ".agent-engineering/core/workflow.md"
             proposed = install.managed_content(selected)
-            proposed["AGENTS.md"] += b"\nupdated content\n"
+            proposed[target] += b"\nupdated content\n"
             proposed = {
-                "AGENTS.md": proposed["AGENTS.md"],
-                **{relative: data for relative, data in proposed.items() if relative != "AGENTS.md"},
+                target: proposed[target],
+                **{relative: data for relative, data in proposed.items() if relative != target},
             }
             stderr = io.StringIO()
             with mock.patch.object(install.os, "replace", side_effect=fail_on_second):
@@ -223,11 +302,9 @@ class InstallerTests(unittest.TestCase):
                 for path in project.rglob("*")
                 if path.is_file() and ".aes-backup-" not in str(path)
             }
-            self.assertNotEqual(before[project / "AGENTS.md"], after[project / "AGENTS.md"])
-            self.assertEqual(
-                (backup / "AGENTS.md").read_bytes(),
-                before[project / "AGENTS.md"],
-            )
+            workflow = project / target
+            self.assertNotEqual(before[workflow], after[workflow])
+            self.assertEqual((backup / target).read_bytes(), before[workflow])
 
 
 if __name__ == "__main__":
