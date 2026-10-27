@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="pt-BR" translate="no"><head><meta name="google" content="notranslate"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AES · Inovação</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
@@ -69,8 +69,8 @@ kbd{font:500 11px var(--mono);color:var(--text-2);border:1px solid var(--line-2)
 
 /* Inbox */
 .view.inbox-view{padding:0;max-width:none}
-.inbox{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,440px);height:calc(100vh - 52px)}
-.ilist{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+.inbox{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,440px);height:calc(100vh - 52px);overflow:hidden}
+.ilist{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--line)}
 .tabs{display:flex;gap:4px;padding:0 16px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
 .tab{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 6px;margin-right:4px;border:0;border-bottom:2px solid transparent;background:none;color:var(--text-2);font-weight:500;cursor:pointer;white-space:nowrap}
 .tab:hover{color:var(--text)}.tab[aria-selected=true]{color:var(--text);border-bottom-color:var(--text)}
@@ -84,6 +84,7 @@ kbd{font:500 11px var(--mono);color:var(--text-2);border:1px solid var(--line-2)
 .row .g{margin-top:2px;color:var(--text-3)}.row.interesting .g{color:var(--warn)}.row.interesting .g .ic{fill:currentColor}
 .row .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row.dismissed .t{color:var(--text-3)}
 .row .m{grid-column:2;font-size:12.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .x{grid-column:2/4;display:none;margin:6px 0 2px;font-size:13.5px;line-height:1.55;color:var(--text-2);overflow-wrap:anywhere}.row.open .x{display:block}.row.open .t{white-space:normal}.detail{min-height:0}
 .row .d{font-size:12.5px;color:var(--text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .more{margin:12px 16px}
 .shortcuts{display:flex;flex-wrap:wrap;gap:4px 14px;padding:9px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--text-3)}
@@ -407,12 +408,12 @@ function glyph(it){return el('span',{class:'g'},ic(it.triage==='interesting'?'st
 function renderInbox(){const c={new:0,interesting:0,dismissed:0,all:S.items.length};for(const it of S.items)c[it.triage]++;for(const b of document.querySelectorAll('[data-c]'))b.textContent=num(c[b.dataset.c]);
  const list=filtered();if(!list.some(it=>it.source===S.sel))S.sel=list[0]?.source||null;
  const ul=$('rows');ul.replaceChildren();
- for(const it of list.slice(0,S.shown)){const li=el('li',{class:'row '+it.triage,role:'option','aria-selected':String(it.source===S.sel),'data-s':it.source},glyph(it),el('span',{class:'t',text:T(it)}),el('span',{class:'d',text:fday(it.date)}),el('span',{class:'m',text:[it.feed_name,...(it.topics||[]).slice(0,2).map(tp)].join(' · ')}));li.onclick=()=>select(it.source,true);ul.append(li)}
+ for(const it of list.slice(0,S.shown)){const li=el('li',{class:'row '+it.triage,role:'option','aria-selected':String(it.source===S.sel),'data-s':it.source},glyph(it),el('span',{class:'t',text:T(it)}),el('span',{class:'d',text:fday(it.date)}),el('span',{class:'m',text:[it.feed_name,...(it.topics||[]).slice(0,2).map(tp)].join(' · ')}),el('p',{class:'x',text:SUM(it)||'O feed não trouxe resumo para este item.'}));li.classList.toggle('open',it.source===S.sel&&!S.collapsed);li.onclick=()=>{S.collapsed=it.source===S.sel?!S.collapsed:false;select(it.source,true)};ul.append(li)}
  if(list.length>S.shown){const b=el('button',{class:'btn more',type:'button',text:`Mostrar mais ${num(Math.min(80,list.length-S.shown))}`});b.onclick=()=>{S.shown+=80;renderInbox()};ul.append(el('li',{},b))}
  if(!list.length)ul.append(el('li',{},S.filter==='new'&&S.items.length&&!$('q').value&&!$('feed').value?empty('check','Caixa de entrada zerada','Todas as descobertas foram triadas. Rode uma nova pesquisa para buscar mais.'):S.items.length?empty('search','Nada encontrado','Ajuste a busca ou os filtros.'):empty('inbox','Nenhuma descoberta ainda','Use “Pesquisar agora” para coletar os feeds configurados.')));
  renderDetail()}
 function current(){return S.items.find(it=>it.source===S.sel)}
-function select(src,open){S.sel=src;for(const r of document.querySelectorAll('.row'))r.setAttribute('aria-selected',String(r.dataset.s===src));const r=document.querySelector(`.row[aria-selected=true]`);r?.scrollIntoView({block:'nearest'});renderDetail();if(open&&matchMedia('(max-width:860px)').matches)$('inbox').classList.add('show-detail')}
+function select(src,open){S.sel=src;for(const r of document.querySelectorAll('.row')){r.setAttribute('aria-selected',String(r.dataset.s===src));r.classList.toggle('open',r.dataset.s===src&&!S.collapsed);r.setAttribute('aria-expanded',String(r.dataset.s===src&&!S.collapsed))}const r=document.querySelector(`.row[aria-selected=true]`);r?.scrollIntoView({block:'nearest'});renderDetail();if(open&&matchMedia('(max-width:860px)').matches)$('inbox').classList.add('show-detail')}
 function renderDetail(){const d=$('detail'),it=current();d.replaceChildren();if(!it){d.append(empty('inbox','Selecione uma descoberta','Os detalhes e as ações de triagem aparecem aqui.'));return}
  const back=el('button',{class:'btn btn-ghost back',type:'button'},ic('left'),'Voltar');back.onclick=()=>$('inbox').classList.remove('show-detail');
  const acts=el('div',{class:'acts'});
