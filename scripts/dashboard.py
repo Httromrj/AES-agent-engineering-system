@@ -11,6 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+import adopt
 import dashboard_auth
 import innovation
 
@@ -34,6 +35,9 @@ LOGIN_PAGE = PAGE_PATH.with_name("dashboard_login.html").read_text(encoding="utf
 SESSION_COOKIE = "aes_session"
 POST_ROUTES = {"/api/login", "/api/logout", "/api/password", "/api/run", "/api/triage",
                "/api/users/create", "/api/users/reset", "/api/users/role", "/api/users/delete"}
+ADOPTION_ROUTES = {"/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
+                   "/api/adoptions/deploy", "/api/adoptions/discard", "/api/adoptions/revert"}
+POST_ROUTES |= ADOPTION_ROUTES
 
 
 def _read_jsonl(path, keep=None):
@@ -332,7 +336,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if user:
                 self._json(200, user)
             return
-        if not self._require(admin=path == "/api/users"):
+        if not self._require(admin=path in {"/api/users", "/api/adoption/config"}):
             return
         if path == "/api/status":
             self._json(200, dashboard_status())
@@ -340,6 +344,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(200, dashboard_discoveries())
         elif path == "/api/users":
             self._json(200, {"users": dashboard_auth.list_users()})
+        elif path == "/api/adoptions":
+            self._json(200, {"adoptions": adopt.list_adoptions(), "projects": adopt.projects()})
+        elif path == "/api/adoption/config":
+            self._json(200, {"providers": adopt.provider_status(), "github": adopt.github_identity(),
+                             "projects": adopt.projects(), "max_cost_usd": adopt.MAX_COST_PER_ADOPTION_USD})
         else:
             self._json(404, {"error": "not found"})
 
@@ -359,6 +368,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._change_password()
         elif path.startswith("/api/users/"):
             self._users_action(path)
+        elif path in ADOPTION_ROUTES:
+            self._adoption_action(path)
         elif self._require():
             self._triage() if path == "/api/triage" else self._run()
 
@@ -415,6 +426,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": str(exc)})
         except OSError:
             self._json(500, {"error": "Não foi possível salvar o cadastro de usuários."})
+
+    def _adoption_action(self, path):
+        admin = self._require(admin=True)
+        payload = self._read_json_body() if admin else None
+        if payload is None:
+            return
+        actor = admin["username"]
+        try:
+            if path == "/api/adoption/settings":
+                adopt.save_settings(payload.get("provider"), payload.get("model"), actor)
+                result = {"ok": True}
+            elif path == "/api/projects/add":
+                result = adopt.add_project(payload.get("repo"), actor)
+            elif path == "/api/projects/remove":
+                adopt.remove_project(payload.get("repo"), actor)
+                result = {"ok": True}
+            elif path == "/api/adoptions/preview":
+                repos = payload.get("repos") if isinstance(payload.get("repos"), list) else []
+                result = adopt.start_preview(payload.get("source"), payload.get("note"), repos, actor)
+            elif path == "/api/adoptions/deploy":
+                result = adopt.deploy(payload.get("id"), actor)
+            elif path == "/api/adoptions/discard":
+                adopt.discard(payload.get("id"), actor)
+                result = {"ok": True}
+            else:
+                result = adopt.revert(payload.get("id"), payload.get("repo"), actor)
+        except adopt.AdoptionError as exc:
+            self._json(400, {"error": str(exc)})
+            return
+        except OSError:
+            self._json(500, {"error": "Não foi possível salvar a operação."})
+            return
+        self._json(200, result)
 
     def _triage(self):
         payload = self._read_json_body()

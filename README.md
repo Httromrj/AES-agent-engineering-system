@@ -175,6 +175,38 @@ email addresses, confidentiality markers) or any read/audit error **blocks** the
 audit logs contain only paths and detector IDs, never matched values. A clear result means no
 configured detector matched; it is not proof that a file is safe.
 
+## From discovery to your projects
+
+AES does not stop at a reading list. An admin picks a discovery in the dashboard and clicks
+**Deploy to projects**; AES then:
+
+1. reads the source page (bounded, HTTPS only, contact data and token-like strings redacted),
+2. asks the configured model to draft an **Agent Skill** (`SKILL.md`: when to use, how to apply, how to verify, pitfalls),
+3. validates the draft (structure, size, sensitivity rules, and a block-list for fetch-and-run, destructive, or exfiltration commands),
+4. shows a preview, and on confirmation **commits directly to the default branch** of each selected GitHub repository,
+5. records every commit, and can **revert** any repository with one click (a new commit that removes the files).
+
+```text
+.agent-engineering/adopted/aes-<skill>/SKILL.md   canonical skill with source and date
+.claude/skills/aes-<skill>/SKILL.md               adapter for Claude Code (also .agents/ and .github/ when detected)
+.agent-engineering/adopted/README.md              index of active adopted skills
+```
+
+Commits contain only those skill files. Feed and article text is untrusted, so AES never writes application
+code or executable files to your repositories; your coding agent applies the skill when it works on a task.
+
+| Model provider | Environment variable | Notes |
+|---|---|---|
+| Anthropic Claude | `ANTHROPIC_API_KEY` | Official SDK, default model `claude-opus-5-5`, server-side refusal fallback |
+| Google Gemini | `GEMINI_API_KEY` | OpenAI-compatible endpoint; free tier available |
+| DeepSeek | `DEEPSEEK_API_KEY` | OpenAI-compatible endpoint |
+| xAI Grok | `XAI_API_KEY` | OpenAI-compatible endpoint |
+| OpenAI | `OPENAI_API_KEY` | OpenAI-compatible endpoint |
+
+Choose the provider and model under *AI and GitHub*. Each skill draft is capped by
+`AES_MAX_COST_PER_ADOPTION_USD` (default `1.0`). GitHub access uses `AES_GITHUB_TOKEN`, a fine-grained token
+limited to the chosen repositories with **Contents: read and write**.
+
 ## Innovation dashboard
 
 A small authenticated web app (`scripts/dashboard.py`, standard library only) to follow the research
@@ -235,8 +267,8 @@ they do not replace reviewing the actual code.
 ## Limitations
 
 AES does not guarantee that an agent follows instructions; tests and human review remain necessary.
-It does not verify product claims, run experiments, update dependencies, edit consumer projects, open
-pull requests, or deploy on its own. The research command is one bounded cycle; schedule it
+It does not verify product claims, run experiments, update dependencies, or deploy on its own. Adopted
+skills reach consumer repositories only after an admin confirms a preview, and only as `SKILL.md` files. The research command is one bounded cycle; schedule it
 externally. The model gateway ships with no providers configured.
 
 ## Documentation

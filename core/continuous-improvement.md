@@ -14,7 +14,7 @@ The scanner stores audit data outside the repository in the per-user AES state d
 
 Research discoveries and proposals may be recorded with `python scripts/innovation.py record discovery <json-file>` or `... record proposal <json-file>`. Use the schema described in `research/README.md`. The register and generated digests live in the per-user AES state directory, outside the repository by default, to avoid accidental publication of unreviewed research.
 
-Periodic research is a one-shot command that can be scheduled by an operator; it does not install its own scheduler. Research ingestion uses only configured feeds and does not upload project content or call a model. Experiments, edits to consumer projects, core changes, publishing, and deployment still require approved scope and permissions. AES does not self-approve recommendations or push to main.
+Periodic research is a one-shot command that can be scheduled by an operator; it does not install its own scheduler. Research ingestion uses only configured feeds and does not upload project content or call a model. Experiments, edits to consumer projects, core changes, publishing, and deployment still require approved scope and permissions. AES does not self-approve recommendations. The dashboard's adoption flow may commit generated skills to a registered repository's default branch, but only after an admin reviews the preview, only as `SKILL.md` files plus an index, and with a one-click revert; it never writes application code.
 
 ## When to raise a proposal
 - A defect or omission recurs.

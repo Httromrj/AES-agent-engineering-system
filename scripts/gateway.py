@@ -50,8 +50,10 @@ class OpenAICompatibleTransport:
             if not key:
                 raise OSError("provider credential unavailable")
             headers["Authorization"] = "Bearer " + key
-        body = json.dumps({"model": provider["model"], "messages": messages,
-                           "max_tokens": max_tokens}).encode("utf-8")
+        payload = {"model": provider["model"], "messages": messages, "max_tokens": max_tokens}
+        if provider.get("json_mode"):
+            payload["response_format"] = {"type": "json_object"}
+        body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")
         opener = urllib.request.build_opener(SafeRedirect)
         with opener.open(request, timeout=timeout) as response:

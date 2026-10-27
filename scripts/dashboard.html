@@ -126,7 +126,19 @@ dialog{border:1px solid var(--line-2);border-radius:12px;background:var(--panel)
 dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px}.dlg h3{margin:0;font-size:16px;font-weight:600}.dlg p{margin:0;color:var(--text-2)}
 .dlg-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
 .secret{display:flex;align-items:center;gap:8px;border:1px dashed var(--line-2);border-radius:8px;padding:10px 12px;background:var(--bg)}.secret code{flex:1;font-size:14px;background:none;border:0;padding:0;overflow-wrap:anywhere;user-select:all}
-@media (max-width:860px){.settings{grid-template-columns:1fr}.view-head{flex-wrap:wrap}}
+.adopt{margin-bottom:14px}.adopt .panel-h{flex-wrap:wrap}.adopt-title{display:flex;align-items:center;gap:10px;min-width:0}.adopt-title h3{overflow-wrap:anywhere}
+.adopt-body{padding:14px 16px;display:grid;gap:12px}.adopt-body p{margin:0;color:var(--text-2);max-width:75ch}
+.adopt-meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--text-3)}
+.adopt pre{margin:0;max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;font:12.5px/1.6 var(--mono);color:var(--text-2)}
+.adopt details summary{cursor:pointer;font-size:13px;font-weight:500}
+.spin{width:14px;height:14px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:rot .8s linear infinite;flex:none}@keyframes rot{to{transform:rotate(360deg)}}
+.providers{display:grid;gap:8px;padding:16px}.prov{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:12px 14px;cursor:pointer}
+.prov:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}.prov input[type=radio]{accent-color:var(--accent)}.prov b{font-weight:600}.prov .sub{grid-column:2/4;font-size:12.5px;color:var(--text-3)}
+.prov .model{grid-column:2/4;display:flex;gap:8px;align-items:center}.prov .model input{max-width:280px;height:30px;padding:0 8px;border:1px solid var(--line-2);border-radius:6px;background:var(--bg);color:var(--text);font:12.5px var(--mono)}
+.checks{display:grid;gap:6px;max-height:220px;overflow:auto}.checks label{display:flex;gap:8px;align-items:center;font-weight:400;margin:0}
+.form textarea{width:100%;min-height:80px;padding:8px 10px;border:1px solid var(--line-2);border-radius:7px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+.steps{margin:0;padding-left:18px;color:var(--text-2);font-size:13.5px;display:grid;gap:6px}
+@media (max-width:860px){.settings{grid-template-columns:1fr}.view-head{flex-wrap:wrap}.prov .model{flex-wrap:wrap}}
 
 @media (max-width:1080px){.grid2{grid-template-columns:1fr}}
 @media (max-width:860px){
@@ -167,6 +179,9 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6z"/></symbol>
+<symbol id="i-rocket" viewBox="0 0 24 24"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2"/><path d="M9 12a12 12 0 0 1 10-9 12 12 0 0 1-9 10l-2.5 1.5L6 12z"/><circle cx="14.5" cy="9.5" r="1.5"/></symbol>
+<symbol id="i-repo" viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
 </svg>
 <div class="app">
 <aside class="nav" id="nav" aria-label="Navegação principal">
@@ -175,6 +190,7 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
   <a href="#/visao" data-v="visao"><svg class="ic"><use href="#i-home"/></svg>Visão geral</a>
   <a href="#/descobertas" data-v="descobertas"><svg class="ic"><use href="#i-inbox"/></svg>Descobertas<span class="badge num" id="navQueue" hidden></span></a>
   <a href="#/propostas" data-v="propostas"><svg class="ic"><use href="#i-bulb"/></svg>Propostas<span class="badge num" id="navProps" hidden></span></a>
+  <a href="#/implantacoes" data-v="implantacoes"><svg class="ic"><use href="#i-rocket"/></svg>Implantações<span class="badge num" id="navAdopt" hidden></span></a>
  </div>
  <div class="nav-group"><div class="nav-label">Operação</div>
   <a href="#/fontes" data-v="fontes"><svg class="ic"><use href="#i-rss"/></svg>Fontes<span class="badge num" id="navSrc" hidden></span></a>
@@ -182,6 +198,8 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
   <a href="#/digest" data-v="digest"><svg class="ic"><use href="#i-file"/></svg>Digest</a>
  </div>
  <div class="nav-group" id="adminNav" hidden><div class="nav-label">Administração</div>
+  <a href="#/projetos" data-v="projetos"><svg class="ic"><use href="#i-repo"/></svg>Projetos</a>
+  <a href="#/integracoes" data-v="integracoes"><svg class="ic"><use href="#i-cpu"/></svg>IA e GitHub</a>
   <a href="#/usuarios" data-v="usuarios"><svg class="ic"><use href="#i-users"/></svg>Usuários</a>
  </div>
  <div class="nav-foot">
@@ -266,6 +284,36 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
   </div>
  </section>
 
+ <section class="view" data-view="implantacoes" hidden>
+  <div class="view-head"><div><h2>Implantações</h2><p>Novidades transformadas em skills e enviadas por commit para os seus projetos no GitHub.</p></div></div>
+  <div id="adoptList"></div>
+  <p class="note">Para implantar: abra <a href="#/descobertas">Descobertas</a>, escolha um item e clique em <b>Implantar nos projetos</b>. A IA escreve uma skill; você confere a prévia e confirma. O AES só grava arquivos de skill (<code>SKILL.md</code>), nunca código da aplicação.</p>
+ </section>
+
+ <section class="view" data-view="projetos" hidden>
+  <div class="view-head"><div><h2>Projetos</h2><p>Repositórios do GitHub que recebem as skills adotadas por commit direto no branch principal.</p></div></div>
+  <div class="panel"><form class="form pad" id="projForm" novalidate style="grid-template-columns:1fr auto;align-items:end">
+   <div><label for="projRepo">Repositório</label><input id="projRepo" placeholder="dono/repositorio ou https://github.com/dono/repositorio" autocomplete="off" spellcheck="false"></div>
+   <button class="btn btn-primary" type="submit" style="height:36px"><svg class="ic"><use href="#i-plus"/></svg>Adicionar</button>
+   <div class="err" id="projErr" role="alert" style="grid-column:1/-1"></div></form></div>
+  <div class="panel tbl-wrap" style="margin-top:16px"><table class="tbl"><thead><tr><th>Repositório</th><th>Branch</th><th>Agentes detectados</th><th>Skills ativas</th><th class="r">Ações</th></tr></thead><tbody id="projTable"></tbody></table></div>
+ </section>
+
+ <section class="view" data-view="integracoes" hidden>
+  <div class="view-head"><div><h2>IA e GitHub</h2><p>Qual modelo escreve as skills e como o AES acessa os seus repositórios. Chaves ficam só nas variáveis de ambiente do Coolify.</p></div></div>
+  <div class="settings" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+   <div class="panel"><div class="panel-h"><h3>Modelo de IA</h3><span class="faint" style="font-size:12px" id="costCap"></span></div><div class="providers" id="providers"></div>
+    <div class="panel-f" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="err" id="provErr"></span><button class="btn btn-primary" type="button" id="provSave">Salvar</button></div></div>
+   <div class="panel"><div class="panel-h"><h3>GitHub</h3><span id="ghStatus"></span></div>
+    <div class="pad"><ol class="steps">
+     <li>No GitHub: <i>Settings → Developer settings → Fine-grained tokens → Generate new token</i>.</li>
+     <li>Em <i>Repository access</i>, escolha os repositórios que o AES pode alterar.</li>
+     <li>Em <i>Permissions → Repository</i>, dê <b>Contents: Read and write</b> (Metadata fica como leitura).</li>
+     <li>No Coolify, crie a variável secreta <code>AES_GITHUB_TOKEN</code> com o token e reinicie a aplicação.</li>
+    </ol></div></div>
+  </div>
+ </section>
+
  <section class="view" data-view="usuarios" hidden>
   <div class="view-head"><div><h2>Usuários</h2><p>Quem pode acessar o painel. Novas contas recebem uma senha temporária e criam a própria senha no primeiro acesso.</p></div>
    <button class="btn btn-primary" type="button" id="newUser"><svg class="ic"><use href="#i-plus"/></svg>Novo usuário</button></div>
@@ -278,7 +326,7 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
 <div class="toast" id="toast" role="status"><span id="toastMsg"></span></div>
 <script>
 const $=id=>document.getElementById(id),SVG='http://www.w3.org/2000/svg';
-const VIEWS={visao:'Visão geral',descobertas:'Descobertas',propostas:'Propostas',fontes:'Fontes',execucoes:'Execuções',digest:'Digest',conta:'Minha conta',usuarios:'Usuários'};
+const VIEWS={visao:'Visão geral',descobertas:'Descobertas',propostas:'Propostas',fontes:'Fontes',execucoes:'Execuções',digest:'Digest',conta:'Minha conta',usuarios:'Usuários',implantacoes:'Implantações',projetos:'Projetos',integracoes:'IA e GitHub'};
 const _fetch=window.fetch.bind(window);
 window.fetch=async(...args)=>{const r=await _fetch(...args);
  if(r.status===401&&!String(args[0]).startsWith('/api/login')){location.replace('/login');return new Promise(()=>{})}
@@ -300,7 +348,7 @@ function empty(icon,title,text){return el('div',{class:'empty'},ic(icon),el('b',
 function toast(msg,action){$('toastMsg').textContent=msg;const t=$('toast');t.querySelector('button')?.remove();if(action){const b=el('button',{type:'button',text:action.label});b.onclick=()=>{t.classList.remove('show');action.run()};t.append(b)}t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),action?6000:3500)}
 
 /* Routing */
-function route(){let v=(location.hash.match(/^#\/(\w+)/)||[])[1];if(!VIEWS[v]||(v==='usuarios'&&ME&&ME.role!=='admin'))v='visao';S.view=v;
+function route(){let v=(location.hash.match(/^#\/(\w+)/)||[])[1];if(!VIEWS[v]||(['usuarios','projetos','integracoes'].includes(v)&&ME&&ME.role!=='admin'))v='visao';S.view=v;
  for(const s of document.querySelectorAll('[data-view]'))s.hidden=s.dataset.view!==v;
  for(const a of document.querySelectorAll('.nav a'))a.setAttribute('aria-current',a.dataset.v===v?'page':'false');
  $('viewTitle').textContent=VIEWS[v];document.title=`${VIEWS[v]} · AES`;document.body.classList.remove('nav-open');if(v==='descobertas')renderInbox()}
@@ -362,7 +410,8 @@ function select(src,open){S.sel=src;for(const r of document.querySelectorAll('.r
 function renderDetail(){const d=$('detail'),it=current();d.replaceChildren();if(!it){d.append(empty('inbox','Selecione uma descoberta','Os detalhes e as ações de triagem aparecem aqui.'));return}
  const back=el('button',{class:'btn btn-ghost back',type:'button'},ic('left'),'Voltar');back.onclick=()=>$('inbox').classList.remove('show-detail');
  const acts=el('div',{class:'acts'});
- if(it.url)acts.append(el('a',{class:'btn btn-primary',href:it.url,target:'_blank',rel:'noopener noreferrer'},'Abrir fonte',ic('ext')));
+ if(it.url)acts.append(el('a',{class:'btn',href:it.url,target:'_blank',rel:'noopener noreferrer'},'Abrir fonte',ic('ext')));
+ if(ME&&ME.role==='admin'){const ad=el('button',{class:'btn btn-primary',type:'button'},ic('rocket'),'Implantar nos projetos');ad.onclick=()=>adoptDialog(it);acts.prepend(ad)}
  if(it.triage!=='interesting')acts.append(act('star','Interessante','I','interesting',it,'star'));if(it.triage!=='dismissed')acts.append(act('x','Descartar','D','dismissed',it));if(it.triage!=='new')acts.append(act('undo','Voltar à fila','U','new',it));
  d.append(back,el('div',{class:'src'},glyph(it),el('span',{text:`${it.feed_name} · ${TRI[it.triage]}`})),el('h2',{text:it.title}),
   el('div',{class:'meta num'},el('span',{text:it.date?`Publicado em ${fdt(it.date+'T12:00:00',{day:'2-digit',month:'long',year:'numeric'})}`:''}),el('span',{text:it.status==='hypothesis'?'Hipótese não verificada':it.status||''})),
@@ -460,5 +509,61 @@ async function logout(){try{await post('/api/logout')}catch(e){}location.replace
 $('logout').onclick=logout;$('logout2').onclick=logout;
 addEventListener('hashchange',()=>{if(S.view==='usuarios')loadUsers()});
 
-loadMe().then(()=>{route();if(S.view==='usuarios')loadUsers();if(!ME.must_change){refresh();loadDiscoveries()}setInterval(()=>{if(!forceChange.open)refresh()},10000)});
+/* Adoption */
+const AST={generating:['Gerando skill…','warn'],preview:['Prévia pronta','warn'],deploying:['Implantando…','warn'],deployed:['Implantada','ok'],failed:['Falhou','err']};
+const RST={deployed:['Implantada','ok','check'],failed:['Falhou','err','alert'],reverted:['Revertida','','undo']};
+let ADOPT={adoptions:[],projects:[]};
+async function loadAdoptions(){try{const r=await fetch('/api/adoptions',{cache:'no-store'});ADOPT=await r.json();renderAdoptions();renderProjects();
+ const busy=ADOPT.adoptions.some(a=>['generating','deploying'].includes(a.status)),pending=ADOPT.adoptions.filter(a=>a.status==='preview').length;setBadge('navAdopt',pending);
+ clearTimeout(loadAdoptions.t);if(busy)loadAdoptions.t=setTimeout(loadAdoptions,3000)}catch(e){}}
+function renderAdoptions(){const box=$('adoptList');box.replaceChildren();const admin=ME&&ME.role==='admin';
+ if(!ADOPT.adoptions.length){box.append(el('div',{class:'panel'},empty('rocket','Nenhuma implantação ainda',ADOPT.projects.length?'Escolha uma descoberta e clique em “Implantar nos projetos”.':'Cadastre um repositório em Projetos e configure IA e GitHub para começar.')));return}
+ for(const a of ADOPT.adoptions){const[lab,cls]=AST[a.status]||[a.status,''];const sk=a.skill||{};
+  const head=el('div',{class:'panel-h'},el('div',{class:'adopt-title'},['generating','deploying'].includes(a.status)?el('span',{class:'spin'}):ic('rocket'),el('h3',{class:'mono',text:sk.name||'Nova skill'})),el('span',{class:'pill '+cls,text:lab}));
+  const body=el('div',{class:'adopt-body'});
+  body.append(el('div',{class:'adopt-meta'},el('span',{text:sk.title||a.source}),el('span',{text:`por ${a.created_by}`}),el('span',{class:'num',text:fdt(a.created_at)}),sk.model?el('span',{text:`${sk.model} · US$ ${Number(sk.cost_usd||0).toFixed(4)}`}):null));
+  if(a.status==='generating')body.append(el('p',{text:`A IA está lendo a fonte e escrevendo a skill para ${a.repos.length} projeto(s). Leva de 20 s a 2 min.`}));
+  if(a.error)body.append(el('p',{class:'error',text:a.error}));
+  if(sk.summary_pt)body.append(el('p',{text:sk.summary_pt}));
+  if(sk.body){const det=el('details',{open:a.status==='preview'},el('summary',{text:'Ver a skill (SKILL.md)'}),el('pre',{text:`---\nname: ${sk.name}\ndescription: ${sk.description}\n---\n\n${sk.body}`}));body.append(det)}
+  const rows=el('ul',{class:'plist',style:'border:1px solid var(--line);border-radius:8px'});
+  for(const repo of a.repos){const r=(a.results||{})[repo];const[rl,rc,ri]=r?RST[r.status]||[r.status,'','circle']:[a.status==='preview'?'Aguardando confirmação':'Na fila','','circle'];
+   const li=el('li',{},el('span',{class:'grow mono',text:repo}),r&&r.url?el('a',{href:r.url,target:'_blank',rel:'noopener noreferrer',class:'faint mono',style:'font-size:12px',text:(r.sha||'').slice(0,7)}):null,el('span',{class:'pill '+rc,title:r&&r.error||''},ic(ri),rl));
+   if(admin&&r&&r.status==='deployed'){const rv=el('button',{class:'btn',type:'button',style:'height:28px;font-size:12.5px'},ic('undo'),'Reverter');rv.onclick=()=>adoptAct('revert',a,repo);li.append(rv)}
+   if(r&&r.error)li.append(el('span',{class:'error',style:'font-size:12.5px',text:r.error}));rows.append(li)}
+  body.append(rows);
+  if(admin&&a.status==='preview'){const go=el('button',{class:'btn btn-primary',type:'button'},ic('rocket'),`Implantar em ${a.repos.length} projeto${a.repos.length>1?'s':''}`);go.onclick=()=>adoptAct('deploy',a);
+   const no=el('button',{class:'btn',type:'button',text:'Descartar'});no.onclick=()=>adoptAct('discard',a);body.append(el('div',{class:'row-acts',style:'display:flex;gap:8px;justify-content:flex-end'},no,go))}
+  if(admin&&a.status==='failed'&&!Object.keys(a.results||{}).length){const no=el('button',{class:'btn',type:'button',text:'Remover'});no.onclick=()=>adoptAct('discard',a);body.append(el('div',{style:'display:flex;justify-content:flex-end'},no))}
+  box.append(el('section',{class:'panel adopt'},head,body))}}
+async function adoptAct(kind,a,repo){try{
+ if(kind==='deploy'&&!await dialog({title:`Implantar ${a.skill.name}?`,text:`O AES vai fazer commit direto no branch principal de: ${a.repos.join(', ')}. Só arquivos SKILL.md e o índice em .agent-engineering/adopted/ serão gravados.`,confirm:'Fazer commit'}))return;
+ if(kind==='revert'&&!await dialog({title:`Reverter em ${repo}?`,text:'Um novo commit remove os arquivos desta skill do repositório. O histórico do Git continua com a versão anterior.',confirm:'Reverter',danger:true}))return;
+ await post('/api/adoptions/'+kind,{id:a.id,repo});toast(kind==='deploy'?'Implantação iniciada.':kind==='revert'?'Skill removida do projeto.':'Prévia descartada.');loadAdoptions()}catch(e){toast(e.message)}}
+function adoptDialog(it){const projs=ADOPT.projects;const d=$('dlg');$('dlgTitle').textContent='Implantar nos projetos';
+ if(!projs.length){$('dlgBody').replaceChildren(el('p',{text:'Nenhum projeto cadastrado. Adicione um repositório do GitHub em Projetos primeiro.'}));const go=el('a',{class:'btn btn-primary',href:'#/projetos'},'Ir para Projetos');go.onclick=()=>d.close();const c=el('button',{class:'btn',type:'button',text:'Fechar'});c.onclick=()=>d.close();$('dlgActs').replaceChildren(c,go);d.oncancel=null;d.onclose=null;d.showModal();return}
+ const checks=el('div',{class:'checks'});for(const p of projs)checks.append(el('label',{},el('input',{type:'checkbox',value:p.repo,checked:true}),el('span',{class:'mono',text:p.repo})));
+ const note=el('textarea',{id:'adNote',placeholder:'Opcional: em que focar, como aplicar nos seus projetos, o que evitar…'});const err=el('div',{class:'err',role:'alert'});
+ $('dlgBody').replaceChildren(el('div',{class:'form'},el('p',{class:'muted',style:'margin:0',text:it.title}),el('div',{},el('label',{text:'Projetos'}),checks),el('div',{},el('label',{for:'adNote',text:'Orientação para a IA'}),note),
+  el('p',{class:'note',style:'margin:0',text:'A IA lê a fonte e escreve uma skill. Você confere a prévia antes de qualquer commit.'}),err));
+ const c=el('button',{class:'btn',type:'button',text:'Cancelar'}),ok=el('button',{class:'btn btn-primary',type:'button'},ic('rocket'),'Gerar prévia');c.onclick=()=>d.close();
+ ok.onclick=async()=>{const repos=[...checks.querySelectorAll('input:checked')].map(i=>i.value);if(!repos.length){err.textContent='Escolha pelo menos um projeto.';return}ok.disabled=true;
+  try{await post('/api/adoptions/preview',{source:it.source,note:note.value,repos});d.close();toast('Gerando a skill… acompanhe em Implantações.');location.hash='#/implantacoes';loadAdoptions()}catch(x){err.textContent=x.message}ok.disabled=false};
+ $('dlgActs').replaceChildren(c,ok);d.oncancel=null;d.onclose=null;d.showModal();ok.focus()}
+function renderProjects(){const tb=$('projTable');if(!tb)return;tb.replaceChildren();const admin=ME&&ME.role==='admin';
+ const active={};for(const a of ADOPT.adoptions)for(const[repo,r]of Object.entries(a.results||{}))if(r.status==='deployed')active[repo]=(active[repo]||0)+1;
+ for(const p of ADOPT.projects){const acts=el('div',{class:'acts'});if(admin){const del=el('button',{class:'btn danger',type:'button',title:'Remover','aria-label':`Remover ${p.repo}`},ic('trash'));del.onclick=async()=>{if(!await dialog({title:`Remover ${p.repo}?`,text:'O AES deixa de implantar skills nesse repositório. Nada é apagado no GitHub.',confirm:'Remover',danger:true}))return;try{await post('/api/projects/remove',{repo:p.repo});loadAdoptions()}catch(e){toast(e.message)}};acts.append(del)}
+  tb.append(el('tr',{},el('td',{},el('a',{class:'mono',href:'https://github.com/'+p.repo,target:'_blank',rel:'noopener noreferrer',text:p.repo}),p.private?el('span',{class:'faint',text:' · privado'}):null),el('td',{class:'mono',text:p.branch}),el('td',{},...(p.agents||[]).map(a=>el('span',{class:'tag',text:{claude:'Claude Code',codex:'Codex/Antigravity',copilot:'Copilot'}[a]||a}))),el('td',{class:'num',text:active[p.repo]||0}),el('td',{},acts)))}
+ if(!ADOPT.projects.length)tb.append(el('tr',{},el('td',{colspan:5},empty('repo','Nenhum projeto cadastrado','Adicione um repositório acima. O token do GitHub precisa ter permissão de escrita nele.'))))}
+$('projForm').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');$('projErr').textContent='';b.disabled=true;try{const p=await post('/api/projects/add',{repo:$('projRepo').value});$('projRepo').value='';toast(`${p.repo} adicionado.`);loadAdoptions()}catch(x){$('projErr').textContent=x.message}b.disabled=false};
+async function loadIntegrations(){try{const r=await fetch('/api/adoption/config',{cache:'no-store'});const d=await r.json();const box=$('providers');box.replaceChildren();
+ $('costCap').textContent=`limite de US$ ${Number(d.max_cost_usd).toFixed(2)} por skill`;
+ for(const p of d.providers){box.append(el('label',{class:'prov'},el('input',{type:'radio',name:'prov',value:p.id,checked:p.selected}),el('b',{text:p.label}),p.configured?el('span',{class:'pill ok'},ic('check'),'Chave configurada'):el('span',{class:'pill'},ic('alert'),'Sem chave'),
+  el('span',{class:'sub',text:(p.configured?'':`Crie a variável ${p.key_env} no Coolify. `)+(p.note||'')}),el('span',{class:'model'},el('span',{class:'faint',style:'font-size:12.5px',text:'Modelo'}),el('input',{value:p.model,'data-prov':p.id,'aria-label':`Modelo ${p.label}`,spellcheck:'false'}))))}
+ const g=d.github;$('ghStatus').replaceChildren(!g.configured?el('span',{class:'pill'},ic('alert'),'Sem token'):g.error?el('span',{class:'pill err',title:g.error},ic('alert'),'Token com erro'):el('span',{class:'pill ok'},ic('check'),'@'+g.login))}catch(e){}}
+$('provSave').onclick=async()=>{$('provErr').textContent='';const sel=document.querySelector('input[name=prov]:checked');if(!sel)return;const model=document.querySelector(`input[data-prov="${sel.value}"]`).value;
+ try{await post('/api/adoption/settings',{provider:sel.value,model});toast('Configuração salva.');loadIntegrations()}catch(e){$('provErr').textContent=e.message}};
+addEventListener('hashchange',()=>{if(['implantacoes','projetos'].includes(S.view))loadAdoptions();if(S.view==='integracoes')loadIntegrations()});
+
+loadMe().then(()=>{route();loadAdoptions();if(S.view==='integracoes')loadIntegrations();if(S.view==='usuarios')loadUsers();if(!ME.must_change){refresh();loadDiscoveries()}setInterval(()=>{if(!forceChange.open)refresh()},10000)});
 </script></body></html>

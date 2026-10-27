@@ -73,6 +73,60 @@
       "topics": ["ai", "models", "agents", "antigravity", "developer-tools"],
       "priority": 2,
       "enabled": true
+    },
+    {
+      "id": "anthropic-skills",
+      "name": "Anthropic Agent Skills (repositório)",
+      "url": "https://github.com/anthropics/skills/commits/main.atom",
+      "authority": "official",
+      "topics": ["skills", "agents", "claude-code"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "openai-skills",
+      "name": "OpenAI Skills (repositório)",
+      "url": "https://github.com/openai/skills/commits/main.atom",
+      "authority": "official",
+      "topics": ["skills", "agents", "codex"],
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "id": "impeccable-releases",
+      "name": "Impeccable (design para agentes)",
+      "url": "https://github.com/pbakaus/impeccable/releases.atom",
+      "authority": "maintainer",
+      "topics": ["design", "skills", "frontend"],
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "id": "smashing-magazine",
+      "name": "Smashing Magazine",
+      "url": "https://www.smashingmagazine.com/feed/",
+      "authority": "editorial",
+      "topics": ["design", "ux", "frontend", "accessibility"],
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "id": "web-dev",
+      "name": "web.dev (Chrome)",
+      "url": "https://web.dev/static/blog/feed.xml",
+      "authority": "official",
+      "topics": ["web-platform", "performance", "frontend", "design"],
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "id": "simon-willison",
+      "name": "Simon Willison (técnicas de IA)",
+      "url": "https://simonwillison.net/atom/everything/",
+      "authority": "practitioner",
+      "topics": ["ai", "techniques", "agents", "llm"],
+      "priority": 3,
+      "enabled": true
     }
   ]
 }

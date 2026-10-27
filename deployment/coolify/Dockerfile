@@ -9,6 +9,8 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin aes \
     && chown -R aes:aes /app /var/lib/aes-agent-engineering-system
 
 WORKDIR /app
+# Official Anthropic SDK for the Claude provider; other providers use stdlib HTTP.
+RUN pip install --no-cache-dir anthropic==1.13.0
 COPY --chown=aes:aes scripts/ /app/scripts/
 COPY --chown=aes:aes research/sources.json /app/research/sources.json
 

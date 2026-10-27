@@ -169,30 +169,14 @@ python scripts/innovation.py record proposal proposta.json
 
 <span class="c"># antes de enviar arquivos a um modelo externo, publicar ou compartilhar</span>
 python scripts/innovation.py scan caminho/ --action external_model</pre>
+ <h3>Da novidade para os seus projetos</h3>
+ <p>Em <i>Descobertas</i>, um admin clica em <b>Implantar nos projetos</b>. A IA escolhida em <i>IA e GitHub</i> (Claude, Gemini, DeepSeek, Grok ou OpenAI) lê a fonte e escreve uma <b>skill</b>. Você confere a prévia e confirma; o AES faz <b>commit direto na main</b> de cada repositório escolhido, em <code>.claude/skills/</code> (e <code>.agents/</code>, <code>.github/</code> quando detectados). Em <i>Implantações</i>, cada commit tem link e botão <b>Reverter</b>. Variáveis no Coolify: a chave do provedor (ex.: <code>GEMINI_API_KEY</code>) e <code>AES_GITHUB_TOKEN</code>.</p>
  <div class="callout warn"><b>Portão de sensibilidade:</b> qualquer achado (chave, token, e-mail, string de conexão, marcador de confidencialidade) ou falha de leitura <b>bloqueia</b> a ação. O relatório mostra só caminho e tipo de detector, nunca o valor. Um resultado limpo não prova que o arquivo é seguro.</div>
 </section>
 
-<section class="sec">
- <div class="sec-head"><span class="n">05</span><h2>Boas práticas e limites</h2></div>
- <div class="grid2">
-  <div class="box"><h4>Faça</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
-   <li>Meça com <code>evals/benchmark-tasks.md</code> antes e depois de mudar padrões.</li>
-   <li>Prefira um teste ou checagem automática a uma instrução vaga.</li>
-   <li>Registre decisões aceitas, rejeitadas e adiadas, com justificativa.</li>
-   <li>Faça backup do volume de estado do painel fora da VPS.</li>
-  </ul></div>
-  <div class="box"><h4>O AES não faz</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
-   <li>Não garante que o agente siga as instruções; revisão humana continua necessária.</li>
-   <li>Não verifica alegações de produtos nem roda experimentos sozinho.</li>
-   <li>Não edita projetos, abre PRs ou faz deploy automaticamente.</li>
-   <li>Não chama modelos externos na pesquisa; o gateway vem sem provedores.</li>
-  </ul></div>
- </div>
-</section>
-
 <section class="sec pb">
- <div class="sec-head"><span class="n">06</span><h2>Painel de inovação e acesso</h2></div>
- <p>O painel web (<code>scripts/dashboard.py</code>) roda no Coolify com HTTPS e autenticação. Ele mostra o estado das pesquisas e permite triar descobertas, sem alterar regras, projetos ou Git.</p>
+ <div class="sec-head"><span class="n">05</span><h2>Painel de inovação e acesso</h2></div>
+ <p>O painel web (<code>scripts/dashboard.py</code>) roda no Coolify com HTTPS e autenticação. Ele mostra o estado das pesquisas, permite triar descobertas e implantar skills nos projetos cadastrados.</p>
  <table>
   <tr><th>Tela</th><th>Para que serve</th></tr>
   <tr><td>Visão geral</td><td>Fila de triagem, itens novos, fontes respondendo, última execução e gráfico de atividade.</td></tr>
@@ -200,6 +184,8 @@ python scripts/innovation.py scan caminho/ --action external_model</pre>
   <tr><td>Propostas</td><td>Decisão mais recente de cada proposta (proposta, aceita, rejeitada, adiada).</td></tr>
   <tr><td>Fontes</td><td>Status de cada feed, tópicos e quantidade de itens.</td></tr>
   <tr><td>Execuções</td><td>Histórico de ciclos com duração, itens lidos, novos e erros.</td></tr>
+  <tr><td>Implantações</td><td>Skills geradas, prévia, commits por projeto e botão Reverter.</td></tr>
+  <tr><td>Projetos · IA e GitHub</td><td>Repositórios que recebem skills; escolha do provedor de IA e status do token.</td></tr>
   <tr><td>Digest</td><td>Resumo em Markdown do dia, com uma seção por execução.</td></tr>
  </table>
  <h3>Atalhos na caixa de entrada</h3>
@@ -214,10 +200,24 @@ python scripts/innovation.py scan caminho/ --action external_model</pre>
   <tr><td>Admin sem acesso</td><td>Entre com a conta de recuperação ou rode <code>python scripts/dashboard.py users reset NOME</code> no terminal do container.</td></tr>
   <tr><td>Sair</td><td>Botão ao lado do seu nome, no rodapé do menu lateral.</td></tr>
  </table>
-<pre><span class="c"># no terminal do container: listar, criar, redefinir e excluir usuários</span>
-python scripts/dashboard.py users list
-python scripts/dashboard.py users add maria --admin
-python scripts/dashboard.py users reset maria</pre>
+</section>
+
+<section class="sec pb">
+ <div class="sec-head"><span class="n">06</span><h2>Boas práticas e limites</h2></div>
+ <div class="grid2">
+  <div class="box"><h4>Faça</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
+   <li>Meça com <code>evals/benchmark-tasks.md</code> antes e depois de mudar padrões.</li>
+   <li>Prefira um teste ou checagem automática a uma instrução vaga.</li>
+   <li>Registre decisões aceitas, rejeitadas e adiadas, com justificativa.</li>
+   <li>Faça backup do volume de estado do painel fora da VPS.</li>
+  </ul></div>
+  <div class="box"><h4>O AES não faz</h4><ul class="clean" style="font-size:9pt;color:var(--ink-2)">
+   <li>Não garante que o agente siga as instruções; revisão humana continua necessária.</li>
+   <li>Não verifica alegações de produtos nem roda experimentos sozinho.</li>
+   <li>Não grava código da aplicação: nos projetos, só commita skills (<code>SKILL.md</code>) aprovadas por um admin.</li>
+   <li>Não chama modelos externos na pesquisa; o gateway vem sem provedores.</li>
+  </ul></div>
+ </div>
 </section>
 
 </body></html>
