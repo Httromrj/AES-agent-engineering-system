@@ -137,6 +137,7 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
 .prov .model{grid-column:2/4;display:flex;gap:8px;align-items:center}.prov .model input{max-width:280px;height:30px;padding:0 8px;border:1px solid var(--line-2);border-radius:6px;background:var(--bg);color:var(--text);font:12.5px var(--mono)}
 .checks{display:grid;gap:6px;max-height:220px;overflow:auto}.checks label{display:flex;gap:8px;align-items:center;font-weight:400;margin:0}
 .form textarea{width:100%;min-height:80px;padding:8px 10px;border:1px solid var(--line-2);border-radius:7px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+.orig{margin:-6px 0 14px;font-size:13px}.orig summary{cursor:pointer;color:var(--text-3)}.orig p{margin:6px 0 0;max-width:62ch}
 .steps{margin:0;padding-left:18px;color:var(--text-2);font-size:13.5px;display:grid;gap:6px}
 @media (max-width:860px){.settings{grid-template-columns:1fr}.view-head{flex-wrap:wrap}.prov .model{flex-wrap:wrap}}
 
@@ -304,13 +305,14 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
   <div class="settings" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
    <div class="panel"><div class="panel-h"><h3>Modelo de IA</h3><span class="faint" style="font-size:12px" id="costCap"></span></div><div class="providers" id="providers"></div>
     <div class="panel-f" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="err" id="provErr"></span><button class="btn btn-primary" type="button" id="provSave">Salvar</button></div></div>
+   <div style="display:grid;gap:16px;align-content:start"><div class="panel"><div class="panel-h"><h3>Tradução para português</h3><span id="trStatus"></span></div><div class="pad" style="display:grid;gap:10px"><p class="muted" style="margin:0" id="trText">—</p><div><button class="btn" type="button" id="trNow">Traduzir agora</button></div></div></div>
    <div class="panel"><div class="panel-h"><h3>GitHub</h3><span id="ghStatus"></span></div>
     <div class="pad"><ol class="steps">
      <li>No GitHub: <i>Settings → Developer settings → Fine-grained tokens → Generate new token</i>.</li>
      <li>Em <i>Repository access</i>, escolha os repositórios que o AES pode alterar.</li>
      <li>Em <i>Permissions → Repository</i>, dê <b>Contents: Read and write</b> (Metadata fica como leitura).</li>
      <li>No Coolify, crie a variável secreta <code>AES_GITHUB_TOKEN</code> com o token e reinicie a aplicação.</li>
-    </ol></div></div>
+    </ol></div></div></div>
   </div>
  </section>
 
@@ -334,6 +336,8 @@ window.fetch=async(...args)=>{const r=await _fetch(...args);
  return r};
 async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Não foi possível concluir a ação.');return d}
 const ERR={HTTP404:'Feed não encontrado (404)',HTTP403:'Acesso negado (403)',HTTP429:'Limite de requisições (429)',Timeout:'Tempo esgotado',NetworkError:'Falha de rede',MalformedXml:'XML inválido',UnsafeXml:'XML com DTD bloqueado',ResponseSizeLimit:'Resposta acima de 2 MB',InvalidFeed:'Feed inválido',InvalidSourceConfig:'Configuração inválida'};
+const TOPIC={ai:'IA',llm:'LLM',agents:'agentes','developer-tools':'ferramentas de dev',releases:'versões',security:'segurança',accessibility:'acessibilidade',design:'design',models:'modelos',research:'pesquisa',product:'produto',python:'python',ecosystem:'ecossistema','web-standards':'padrões web',privacy:'privacidade',testing:'testes',editor:'editor',skills:'skills',techniques:'técnicas',performance:'desempenho','web-platform':'plataforma web',frontend:'frontend',ux:'UX',copilot:'Copilot',codex:'Codex','claude-code':'Claude Code',antigravity:'Antigravity'};
+const tp=t=>TOPIC[t]||t,T=it=>it.title_pt||it.title,SUM=it=>(it.title_pt?it.summary_pt:it.summary)||'';
 const TRI={new:'Na fila',interesting:'Interessante',dismissed:'Descartada'};
 const DEC={proposed:['Proposta',''],accepted:['Aceita','ok'],rejected:['Rejeitada','err'],deferred:['Adiada','warn']};
 const S={view:'visao',status:null,items:[],filter:'new',sel:null,shown:80,wasRunning:false};
@@ -359,7 +363,7 @@ $('menu').onclick=()=>document.body.classList.add('nav-open');$('scrim').onclick
 async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error(r.status);const d=await r.json();S.status=d;renderStatus(d);
  if(S.wasRunning&&!d.running){const n=d.latest_run?d.latest_run.new:0;toast(`Pesquisa concluída · ${n} ${n===1?'item novo':'itens novos'}`);loadDiscoveries()}S.wasRunning=!!d.running}
  catch(e){$('runDot').className='dot err';$('runState').textContent='Indisponível';$('runAgo').textContent='sem conexão'}}
-function renderStatus(d){const run=d.latest_run,t=d.triage_counts||{},src=d.sources||[];
+function renderStatus(d){renderTranslation(d.translation);const tr=d.translation||{};if(renderStatus.lastTr!==undefined&&tr.translated_total>renderStatus.lastTr)loadDiscoveries();renderStatus.lastTr=tr.translated_total||0;const run=d.latest_run,t=d.triage_counts||{},src=d.sources||[];
  const active=src.filter(s=>s.enabled),failing=active.filter(s=>s.error);
  $('runDot').className='dot '+(d.running?'run':!run?'off':failing.length?'err':'');$('runState').textContent=d.running?'Pesquisando':!run?'Sem execuções':failing.length?'Com alertas':'Pronto';$('runAgo').textContent=d.running?'em andamento':run?ago(run.finished_at):'—';
  const btn=$('run');btn.disabled=!!d.running;btn.lastChild.textContent=d.running?'Pesquisando…':'Pesquisar agora';
@@ -396,12 +400,12 @@ async function loadDiscoveries(){try{const r=await fetch('/api/discoveries',{cac
  const sel=$('feed'),cur=sel.value;sel.replaceChildren(el('option',{value:'',text:'Todas as fontes'}));for(const f of d.feeds||[])sel.append(el('option',{value:f.feed,text:`${f.name} (${f.count})`}));sel.value=cur;
  renderInbox();renderQueuePreview();if(S.status)renderSources(S.status.sources||[])}
  catch(e){$('rows').replaceChildren(el('li',{},empty('alert','Não foi possível carregar as descobertas')))}}
-function filtered(){const q=$('q').value.trim().toLowerCase(),feed=$('feed').value;return S.items.filter(it=>(S.filter==='all'||it.triage===S.filter)&&(!feed||it.feed===feed)&&(!q||[it.title,it.summary,(it.topics||[]).join(' '),it.feed_name].join(' ').toLowerCase().includes(q)))}
+function filtered(){const q=$('q').value.trim().toLowerCase(),feed=$('feed').value;return S.items.filter(it=>(S.filter==='all'||it.triage===S.filter)&&(!feed||it.feed===feed)&&(!q||[it.title,it.summary,it.title_pt,it.summary_pt,(it.topics||[]).map(tp).join(' '),(it.topics||[]).join(' '),it.feed_name].join(' ').toLowerCase().includes(q)))}
 function glyph(it){return el('span',{class:'g'},ic(it.triage==='interesting'?'star':it.triage==='dismissed'?'x':'circle'))}
 function renderInbox(){const c={new:0,interesting:0,dismissed:0,all:S.items.length};for(const it of S.items)c[it.triage]++;for(const b of document.querySelectorAll('[data-c]'))b.textContent=num(c[b.dataset.c]);
  const list=filtered();if(!list.some(it=>it.source===S.sel))S.sel=list[0]?.source||null;
  const ul=$('rows');ul.replaceChildren();
- for(const it of list.slice(0,S.shown)){const li=el('li',{class:'row '+it.triage,role:'option','aria-selected':String(it.source===S.sel),'data-s':it.source},glyph(it),el('span',{class:'t',text:it.title}),el('span',{class:'d',text:fday(it.date)}),el('span',{class:'m',text:[it.feed_name,...(it.topics||[]).slice(0,2)].join(' · ')}));li.onclick=()=>select(it.source,true);ul.append(li)}
+ for(const it of list.slice(0,S.shown)){const li=el('li',{class:'row '+it.triage,role:'option','aria-selected':String(it.source===S.sel),'data-s':it.source},glyph(it),el('span',{class:'t',text:T(it)}),el('span',{class:'d',text:fday(it.date)}),el('span',{class:'m',text:[it.feed_name,...(it.topics||[]).slice(0,2).map(tp)].join(' · ')}));li.onclick=()=>select(it.source,true);ul.append(li)}
  if(list.length>S.shown){const b=el('button',{class:'btn more',type:'button',text:`Mostrar mais ${num(Math.min(80,list.length-S.shown))}`});b.onclick=()=>{S.shown+=80;renderInbox()};ul.append(el('li',{},b))}
  if(!list.length)ul.append(el('li',{},S.filter==='new'&&S.items.length&&!$('q').value&&!$('feed').value?empty('check','Caixa de entrada zerada','Todas as descobertas foram triadas. Rode uma nova pesquisa para buscar mais.'):S.items.length?empty('search','Nada encontrado','Ajuste a busca ou os filtros.'):empty('inbox','Nenhuma descoberta ainda','Use “Pesquisar agora” para coletar os feeds configurados.')));
  renderDetail()}
@@ -413,10 +417,11 @@ function renderDetail(){const d=$('detail'),it=current();d.replaceChildren();if(
  if(it.url)acts.append(el('a',{class:'btn',href:it.url,target:'_blank',rel:'noopener noreferrer'},'Abrir fonte',ic('ext')));
  if(ME&&ME.role==='admin'){const ad=el('button',{class:'btn btn-primary',type:'button'},ic('rocket'),'Implantar nos projetos');ad.onclick=()=>adoptDialog(it);acts.prepend(ad)}
  if(it.triage!=='interesting')acts.append(act('star','Interessante','I','interesting',it,'star'));if(it.triage!=='dismissed')acts.append(act('x','Descartar','D','dismissed',it));if(it.triage!=='new')acts.append(act('undo','Voltar à fila','U','new',it));
- d.append(back,el('div',{class:'src'},glyph(it),el('span',{text:`${it.feed_name} · ${TRI[it.triage]}`})),el('h2',{text:it.title}),
+ d.append(back,el('div',{class:'src'},glyph(it),el('span',{text:`${it.feed_name} · ${TRI[it.triage]}`})),el('h2',{text:T(it)}),
   el('div',{class:'meta num'},el('span',{text:it.date?`Publicado em ${fdt(it.date+'T12:00:00',{day:'2-digit',month:'long',year:'numeric'})}`:''}),el('span',{text:it.status==='hypothesis'?'Hipótese não verificada':it.status||''})),
-  it.summary?el('p',{class:'sum',text:it.summary}):el('p',{class:'sum faint',text:'O feed não trouxe resumo para este item.'}),
-  el('div',{},...(it.topics||[]).map(t=>el('span',{class:'tag',text:t}))),acts,
+  SUM(it)?el('p',{class:'sum',text:SUM(it)}):el('p',{class:'sum faint',text:'O feed não trouxe resumo para este item.'}),
+  it.title_pt?el('details',{class:'orig'},el('summary',{text:'Ver original'}),el('p',{class:'faint',text:it.title}),it.summary?el('p',{class:'faint',text:it.summary}):null):el('p',{class:'note',style:'margin-top:0',text:'Tradução para o português pendente. Ela é feita automaticamente pela IA configurada em IA e GitHub.'}),
+  el('div',{},...(it.topics||[]).map(t=>el('span',{class:'tag',text:tp(t)}))),acts,
   el('p',{class:'note',text:'Triagem organiza a fila de leitura; não verifica a fonte nem cria proposta. Antes de adotar algo, compare alternativas e registre uma proposta com evidência.'}))}
 function act(icon,label,key,state,it,cls){const b=el('button',{class:'btn '+(cls||''),type:'button',title:`Atalho: ${key}`},ic(icon),label,el('kbd',{text:key}));b.onclick=()=>triage(it,state);return b}
 async function triage(it,state){if(!it||it.triage===state)return;const prev=it.triage,list=filtered(),i=list.indexOf(it);it.triage=state;
@@ -427,7 +432,7 @@ async function triage(it,state){if(!it||it.triage===state)return;const prev=it.t
  catch(e){it.triage=prev;S.sel=it.source;renderInbox();renderQueuePreview();toast('Não foi possível salvar a triagem.')}}
 function refreshSoon(){clearTimeout(refreshSoon.t);refreshSoon.t=setTimeout(refresh,600)}
 function renderQueuePreview(){const ul=$('queuePreview');ul.replaceChildren();const q=S.items.filter(it=>it.triage==='new');
- for(const it of q.slice(0,8)){const a=el('a',{class:'grow',href:'#/descobertas',text:it.title});a.onclick=()=>{S.filter='new';syncTabs();S.sel=it.source};ul.append(el('li',{},glyph(it),a,el('span',{class:'faint num',style:'font-size:12.5px;white-space:nowrap',title:it.feed_name,text:fday(it.date)})))}
+ for(const it of q.slice(0,8)){const a=el('a',{class:'grow',href:'#/descobertas',text:T(it)});a.onclick=()=>{S.filter='new';syncTabs();S.sel=it.source};ul.append(el('li',{},glyph(it),a,el('span',{class:'faint num',style:'font-size:12.5px;white-space:nowrap',title:it.feed_name,text:fday(it.date)})))}
  if(!q.length)ul.append(el('li',{},empty('check',S.items.length?'Fila zerada':'Nenhuma descoberta ainda',S.items.length?'Todas as descobertas foram triadas.':'Rode a primeira pesquisa para preencher a fila.')))}
 function syncTabs(){for(const t of document.querySelectorAll('.tab'))t.setAttribute('aria-selected',String(t.dataset.f===S.filter))}
 $('tabs').onclick=e=>{const t=e.target.closest('.tab');if(!t)return;S.filter=t.dataset.f;S.shown=80;syncTabs();renderInbox()};
@@ -544,7 +549,7 @@ function adoptDialog(it){const projs=ADOPT.projects;const d=$('dlg');$('dlgTitle
  if(!projs.length){$('dlgBody').replaceChildren(el('p',{text:'Nenhum projeto cadastrado. Adicione um repositório do GitHub em Projetos primeiro.'}));const go=el('a',{class:'btn btn-primary',href:'#/projetos'},'Ir para Projetos');go.onclick=()=>d.close();const c=el('button',{class:'btn',type:'button',text:'Fechar'});c.onclick=()=>d.close();$('dlgActs').replaceChildren(c,go);d.oncancel=null;d.onclose=null;d.showModal();return}
  const checks=el('div',{class:'checks'});for(const p of projs)checks.append(el('label',{},el('input',{type:'checkbox',value:p.repo,checked:true}),el('span',{class:'mono',text:p.repo})));
  const note=el('textarea',{id:'adNote',placeholder:'Opcional: em que focar, como aplicar nos seus projetos, o que evitar…'});const err=el('div',{class:'err',role:'alert'});
- $('dlgBody').replaceChildren(el('div',{class:'form'},el('p',{class:'muted',style:'margin:0',text:it.title}),el('div',{},el('label',{text:'Projetos'}),checks),el('div',{},el('label',{for:'adNote',text:'Orientação para a IA'}),note),
+ $('dlgBody').replaceChildren(el('div',{class:'form'},el('p',{class:'muted',style:'margin:0',text:T(it)}),el('div',{},el('label',{text:'Projetos'}),checks),el('div',{},el('label',{for:'adNote',text:'Orientação para a IA'}),note),
   el('p',{class:'note',style:'margin:0',text:'A IA lê a fonte e escreve uma skill. Você confere a prévia antes de qualquer commit.'}),err));
  const c=el('button',{class:'btn',type:'button',text:'Cancelar'}),ok=el('button',{class:'btn btn-primary',type:'button'},ic('rocket'),'Gerar prévia');c.onclick=()=>d.close();
  ok.onclick=async()=>{const repos=[...checks.querySelectorAll('input:checked')].map(i=>i.value);if(!repos.length){err.textContent='Escolha pelo menos um projeto.';return}ok.disabled=true;
@@ -556,7 +561,10 @@ function renderProjects(){const tb=$('projTable');if(!tb)return;tb.replaceChildr
   tb.append(el('tr',{},el('td',{},el('a',{class:'mono',href:'https://github.com/'+p.repo,target:'_blank',rel:'noopener noreferrer',text:p.repo}),p.private?el('span',{class:'faint',text:' · privado'}):null),el('td',{class:'mono',text:p.branch}),el('td',{},...(p.agents||[]).map(a=>el('span',{class:'tag',text:{claude:'Claude Code',codex:'Codex/Antigravity',copilot:'Copilot'}[a]||a}))),el('td',{class:'num',text:active[p.repo]||0}),el('td',{},acts)))}
  if(!ADOPT.projects.length)tb.append(el('tr',{},el('td',{colspan:5},empty('repo','Nenhum projeto cadastrado','Adicione um repositório acima. O token do GitHub precisa ter permissão de escrita nele.'))))}
 $('projForm').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');$('projErr').textContent='';b.disabled=true;try{const p=await post('/api/projects/add',{repo:$('projRepo').value});$('projRepo').value='';toast(`${p.repo} adicionado.`);loadAdoptions()}catch(x){$('projErr').textContent=x.message}b.disabled=false};
-async function loadIntegrations(){try{const r=await fetch('/api/adoption/config',{cache:'no-store'});const d=await r.json();const box=$('providers');box.replaceChildren();
+function renderTranslation(t){if(!t||!$('trStatus'))return;$('trStatus').replaceChildren(!t.enabled?el('span',{class:'pill'},ic('alert'),'Sem IA configurada'):t.last_error?el('span',{class:'pill err'},ic('alert'),'Com erro'):t.pending?el('span',{class:'pill warn'},el('span',{class:'spin'}),`${t.pending} pendentes`):el('span',{class:'pill ok'},ic('check'),'Em dia'));
+ $('trText').textContent=t.last_error?t.last_error:!t.enabled?'Configure uma chave de IA acima para traduzir títulos e resumos das novidades.':`Títulos e resumos das novidades são traduzidos automaticamente a cada 3 minutos e após cada pesquisa.${t.last_run?' Última tradução: '+fdt(t.last_run)+'.':''}`}
+$('trNow').onclick=async()=>{try{await post('/api/translate',{});toast('Tradução iniciada.');setTimeout(()=>{refresh();loadDiscoveries()},8000)}catch(e){toast(e.message)}};
+async function loadIntegrations(){try{const r=await fetch('/api/adoption/config',{cache:'no-store'});const d=await r.json();if(S.status)renderTranslation(S.status.translation);const box=$('providers');box.replaceChildren();
  $('costCap').textContent=`limite de US$ ${Number(d.max_cost_usd).toFixed(2)} por skill`;
  for(const p of d.providers){box.append(el('label',{class:'prov'},el('input',{type:'radio',name:'prov',value:p.id,checked:p.selected}),el('b',{text:p.label}),p.configured?el('span',{class:'pill ok'},ic('check'),'Chave configurada'):el('span',{class:'pill'},ic('alert'),'Sem chave'),
   el('span',{class:'sub',text:(p.configured?'':`Crie a variável ${p.key_env} no Coolify. `)+(p.note||'')}),el('span',{class:'model'},el('span',{class:'faint',style:'font-size:12.5px',text:'Modelo'}),el('input',{value:p.model,'data-prov':p.id,'aria-label':`Modelo ${p.label}`,spellcheck:'false'}))))}

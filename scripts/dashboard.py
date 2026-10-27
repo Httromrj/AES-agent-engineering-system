@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 import adopt
 import dashboard_auth
 import innovation
+import translate
 
 HOST = os.environ.get("AES_DASHBOARD_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("AES_DASHBOARD_PORT", "8080")))
@@ -28,6 +29,7 @@ _process_lock = threading.Lock()
 _triage_lock = threading.Lock()
 _manual_process = None
 _manual_started_at = None
+_translated_after_run = True
 
 PAGE_PATH = Path(__file__).with_name("dashboard.html")
 PAGE = PAGE_PATH.read_text(encoding="utf-8")
@@ -35,7 +37,7 @@ LOGIN_PAGE = PAGE_PATH.with_name("dashboard_login.html").read_text(encoding="utf
 SESSION_COOKIE = "aes_session"
 POST_ROUTES = {"/api/login", "/api/logout", "/api/password", "/api/run", "/api/triage",
                "/api/users/create", "/api/users/reset", "/api/users/role", "/api/users/delete"}
-ADOPTION_ROUTES = {"/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
+ADOPTION_ROUTES = {"/api/translate", "/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
                    "/api/adoptions/deploy", "/api/adoptions/discard", "/api/adoptions/revert"}
 POST_ROUTES |= ADOPTION_ROUTES
 
@@ -112,11 +114,15 @@ def dashboard_status():
             "fetched", "new", "rejected_by_sensitivity_rules")}
         run["source_counts"] = run.get("source_counts") or []
         run["source_errors_count"] = len((runs[-1].get("source_errors") or []))
+    global _translated_after_run
     with _process_lock:
         running = _manual_process is not None and _manual_process.poll() is None
         manual_attempt = ({"started_at": _manual_started_at, "running": running,
                            "exit_code": None if running else _manual_process.poll()}
                           if _manual_process is not None else None)
+        if manual_attempt and not running and not _translated_after_run:
+            _translated_after_run = True
+            translate.trigger()
 
     # Per-source health comes from the most recent run that consulted or failed each source.
     last_items, last_errors = {}, {}
@@ -152,13 +158,14 @@ def dashboard_status():
             "proposal_count": sum(row.get("kind") == "proposal" for row in register),
             "triage_counts": triage_counts, "sources": sources, "proposals": proposals[:20],
             "run_history": [_run_summary(row) for row in runs[-MAX_RUN_HISTORY:]],
-            "manual_attempt": manual_attempt,
+            "manual_attempt": manual_attempt, "translation": dict(translate.status),
             "digest_name": digest_name, "digest": digest}
 
 
 def dashboard_discoveries():
     register = _read_jsonl(innovation.STATE / "research" / "register.jsonl")
     triage = _triage_map()
+    translations = translate.load()
     names = {s.get("url"): s.get("name") for s in _load_sources()}
     rows = [row for row in register if row.get("kind") == "discovery" and isinstance(row.get("source"), str)]
     rows.sort(key=lambda row: (str(row.get("date") or ""), str(row.get("recorded_at") or "")), reverse=True)
@@ -176,7 +183,9 @@ def dashboard_discoveries():
             "url": _https_or_none(row["source"]), "date": row.get("date"), "summary": summary[:500],
             "topics": [str(t)[:40] for t in (row.get("topics") or []) if isinstance(t, str)][:8],
             "feed": feed, "feed_name": feed_name, "status": row.get("status"),
-            "triage": triage.get(_key(row["source"]), "new")})
+            "triage": triage.get(_key(row["source"]), "new"),
+            "title_pt": translations.get(_key(row["source"]), {}).get("title"),
+            "summary_pt": translations.get(_key(row["source"]), {}).get("summary")})
         entry = feeds.setdefault(feed, {"feed": feed, "name": feed_name, "count": 0})
         entry["count"] += 1
     return {"discoveries": discoveries, "total": len(rows),
@@ -202,7 +211,7 @@ def set_triage(source, triage_state):
 
 
 def start_research():
-    global _manual_process, _manual_started_at
+    global _manual_process, _manual_started_at, _translated_after_run
     with _process_lock:
         if _manual_process is not None and _manual_process.poll() is None:
             return False
@@ -216,6 +225,7 @@ def start_research():
                 cwd=str(innovation.ROOT), env=os.environ.copy(), stdin=subprocess.DEVNULL,
                 stdout=handle, stderr=subprocess.STDOUT, close_fds=True)
             _manual_started_at = datetime.now(timezone.utc).isoformat()
+            _translated_after_run = False
         finally:
             handle.close()
         return True
@@ -434,8 +444,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         actor = admin["username"]
         try:
-            if path == "/api/adoption/settings":
+            if path == "/api/translate":
+                translate.trigger()
+                result = {"started": True}
+            elif path == "/api/adoption/settings":
                 adopt.save_settings(payload.get("provider"), payload.get("model"), actor)
+                translate.trigger()
                 result = {"ok": True}
             elif path == "/api/projects/add":
                 result = adopt.add_project(payload.get("repo"), actor)
@@ -498,6 +512,7 @@ def main():
         raise SystemExit("Set AES_DASHBOARD_USER to a non-empty username without colons.")
     server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
     server.daemon_threads = True
+    translate.start_background()
     server.serve_forever()
 
 

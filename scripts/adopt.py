@@ -166,7 +166,8 @@ class ProviderTransport(gateway.OpenAICompatibleTransport):
             response = client.beta.messages.create(
                 model=provider["model"], max_tokens=max_tokens, system=system, messages=chat,
                 thinking={"type": "adaptive"},
-                output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SKILL_SCHEMA}},
+                output_config={"effort": provider.get("effort", "medium"),
+                               "format": {"type": "json_schema", "schema": provider.get("schema", SKILL_SCHEMA)}},
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             )
         except anthropic.RateLimitError as exc:
@@ -183,19 +184,23 @@ class ProviderTransport(gateway.OpenAICompatibleTransport):
                           "completion_tokens": response.usage.output_tokens}}
 
 
-def _gateway(transport=None):
+def _gateway(transport=None, task="adopt", schema=SKILL_SCHEMA, effort="medium", max_cost=None):
     current = settings()
     p = PROVIDERS[current["provider"]]
     provider = {"id": current["provider"], "enabled": True, "base_url": p["base_url"], "api_key_env": p["api_key_env"],
-                "model": current["models"][current["provider"]], "tasks": ["adopt"], "kind": p.get("kind", "openai"),
-                "json_mode": p.get("kind") != "anthropic",
+                "model": current["models"][current["provider"]], "tasks": [task], "kind": p.get("kind", "openai"),
+                "json_mode": p.get("kind") != "anthropic", "schema": schema, "effort": effort,
                 "input_cost_per_million": p["in"], "output_cost_per_million": p["out"]}
     if not os.environ.get(p["api_key_env"]):
         raise AdoptionError(f"Configure a variável {p['api_key_env']} no Coolify para usar {p['label']}.")
     config = {"providers": [provider], "max_attempts": 1, "max_requests_per_run": 2,
-              "max_cost_usd_per_run": MAX_COST_PER_ADOPTION_USD, "max_concurrency": 2,
-              "timeout_seconds": 180, "max_output_tokens": 16000, "max_input_bytes": 120_000}
+              "max_cost_usd_per_run": MAX_COST_PER_ADOPTION_USD if max_cost is None else max_cost,
+              "max_concurrency": 2, "timeout_seconds": 180, "max_output_tokens": 16000, "max_input_bytes": 120_000}
     return gateway.Gateway(config, transport=transport or ProviderTransport())
+
+
+def provider_configured():
+    return bool(os.environ.get(PROVIDERS[settings()["provider"]]["api_key_env"]))
 
 
 # ---------------------------------------------------------------- GitHub
