@@ -3,6 +3,7 @@ from collections import deque
 from datetime import datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -159,7 +160,58 @@ def dashboard_status():
             "triage_counts": triage_counts, "sources": sources, "proposals": proposals[:20],
             "run_history": [_run_summary(row) for row in runs[-MAX_RUN_HISTORY:]],
             "manual_attempt": manual_attempt, "translation": dict(translate.status),
-            "digest_name": digest_name, "digest": digest}
+            "digest_name": digest_name, "digest": digest, "digest_pt": digest_pt(digest) if digest else ""}
+
+
+DIGEST_TOPICS = {"ai": "IA", "agents": "agentes", "developer-tools": "ferramentas de dev", "releases": "versões",
+                 "security": "segurança", "accessibility": "acessibilidade", "models": "modelos", "research": "pesquisa",
+                 "product": "produto", "ecosystem": "ecossistema", "web-standards": "padrões web", "privacy": "privacidade",
+                 "testing": "testes", "techniques": "técnicas", "performance": "desempenho", "web-platform": "plataforma web"}
+_MD_ESCAPE = re.compile(r"([\\`*_{}\[\]()#+.!|>])")
+
+
+def _md(text):
+    return _MD_ESCAPE.sub(lambda m: "\\" + m.group(1), text)
+
+
+def digest_pt(text):
+    """Render the English digest in Portuguese: fixed labels by mapping, item text from cached translations."""
+    translations = translate.load()
+    out, current = [], None
+    for line in text.splitlines():
+        heading = re.match(r"^(#{2,3}) \[(.*)\]\(<(.+)>\)$", line)
+        if heading:
+            current = translations.get(_key(heading.group(3)))
+            title = _md(current["title"]) if current else heading.group(2)
+            out.append(f"{heading.group(1)} [{title}](<{heading.group(3)}>)")
+        elif line == "# AES innovation research digest":
+            out.append("# Digest de pesquisa de inovação do AES")
+        elif line.startswith("Every item below is an unverified hypothesis"):
+            out.append("Cada item abaixo é uma hipótese não verificada, baseada em metadados do feed. Revise a fonte primária, "
+                       "compare alternativas e relacione o item a um projeto antes de recomendar ou testar.")
+        elif re.match(r"^## Run \S+ UTC$", line):
+            out.append(line.replace("## Run", "## Execução", 1))
+        elif line.startswith("Generated: "):
+            out.append("Gerado em: " + line[len("Generated: "):])
+        elif line.startswith("- Source: "):
+            out.append("- Fonte: " + line[len("- Source: "):].replace("(official)", "(oficial)"))
+        elif line.startswith("- Published: "):
+            out.append("- Publicado em: " + line[len("- Published: "):])
+        elif line.startswith("- Topics: "):
+            topics = [t.strip() for t in line[len("- Topics: "):].split(",")]
+            out.append("- Tópicos: " + ", ".join(DIGEST_TOPICS.get(t, t) for t in topics))
+        elif line.startswith("- Evidence: "):
+            if current and current.get("summary"):
+                out.append("- Resumo: " + _md(current["summary"]))
+            else:
+                out.append("- Evidência: " + line[len("- Evidence: "):].replace("RSS/Atom metadata from", "Metadados RSS/Atom de", 1))
+        elif line.startswith("- Assessment: hypothesis"):
+            out.append("- Avaliação: hipótese; aplicabilidade e alternativas ainda precisam de revisão.")
+        elif line == "No new candidates were recorded in this run.":
+            out.append("Nenhuma novidade nova foi registrada nesta execução.")
+        else:
+            out.append(line)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def dashboard_discoveries():

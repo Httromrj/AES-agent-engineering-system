@@ -269,7 +269,7 @@ dialog::backdrop{background:var(--scrim)}.dlg{padding:20px;display:grid;gap:14px
  </section>
 
  <section class="view" data-view="digest" hidden>
-  <div class="view-head"><div><h2>Digest</h2><p id="digestName">Resumo em Markdown gerado a cada execução.</p></div></div>
+  <div class="view-head"><div><h2>Digest</h2><p id="digestName">Resumo em Markdown gerado a cada execução.</p></div><button class="btn" type="button" id="digestToggle" aria-pressed="false">Ver original</button></div>
   <div class="panel"><pre class="digest" id="digest">—</pre></div>
  </section>
 
@@ -375,7 +375,9 @@ function renderStatus(d){renderTranslation(d.translation);const tr=d.translation
  $('sWhen').textContent=run?ago(run.finished_at):'—';$('sWhenS').textContent=run?`${fdt(run.finished_at)} · ${secs(run.duration_seconds)}`:'';
  const a=d.manual_attempt;if(a&&!a.running&&a.exit_code&&a.exit_code!==0&&!renderStatus.warned){renderStatus.warned=true;toast(`A última pesquisa manual falhou (código ${a.exit_code}).`)}
  renderSources(src);renderRuns(d.run_history||[]);renderProposals(d.proposals||[],d.proposal_count);
- $('digestName').textContent=d.digest_name?`Arquivo ${d.digest_name}. Uma seção por execução; itens são hipóteses.`:'Ainda não há digest.';$('digest').textContent=d.digest||'—'}
+ $('digestName').textContent=d.digest_name?`Arquivo ${d.digest_name}. Uma seção por execução; itens são hipóteses.`:'Ainda não há digest.';renderDigest()}
+function renderDigest(){const d=S.status||{},orig=$('digestToggle').getAttribute('aria-pressed')==='true';$('digest').textContent=(orig?d.digest:d.digest_pt||d.digest)||'—';$('digestToggle').textContent=orig?'Ver em português':'Ver original';$('digestToggle').hidden=!d.digest}
+$('digestToggle').onclick=e=>{e.currentTarget.setAttribute('aria-pressed',String(e.currentTarget.getAttribute('aria-pressed')!=='true'));renderDigest()};
 function setBadge(id,n){const b=$(id);b.hidden=!n;b.textContent=num(n)}
 function srcPill(s){if(!s.enabled)return el('span',{class:'pill'},ic('pause'),'Desativada');if(s.error)return el('span',{class:'pill err'},ic('alert'),ERR[s.error]||s.error);if(s.items==null)return el('span',{class:'pill'},ic('circle'),'Sem dados');return el('span',{class:'pill ok'},ic('check'),'Respondendo')}
 function renderSources(list){const counts={};for(const it of S.items)counts[it.feed_name]=(counts[it.feed_name]||0)+1;

@@ -52,6 +52,21 @@ class TranslateTests(unittest.TestCase):
         self.assertEqual((first["title_pt"], first["summary_pt"]), ("Nova versão 2", "Builds mais rápidos."))
         self.assertEqual(first["title"], "New release 2")
 
+    def test_digest_is_rendered_in_portuguese(self):
+        translate.translate_pending(self.transport())
+        digest = "\n".join([
+            "# AES innovation research digest", "", "## Run 10:00:00 UTC", "",
+            "### [New release 1](<https://example.com/1>)", "", "- Topics: agents, releases",
+            r"- Evidence: RSS/Atom metadata from Demo\. Faster builds 1\.",
+            "- Assessment: hypothesis; applicability and alternatives still need review.", ""])
+        result = dashboard.digest_pt(digest)
+        self.assertIn("# Digest de pesquisa de inovação do AES", result)
+        self.assertIn("## Execução 10:00:00 UTC", result)
+        self.assertIn("### [Nova versão 1](<https://example.com/1>)", result)
+        self.assertIn("- Tópicos: agentes, versões", result)
+        self.assertIn(r"- Resumo: Builds mais rápidos\.", result)
+        self.assertNotIn("Assessment", result)
+
     def test_invalid_reply_records_error_without_saving(self):
         self.assertEqual(translate.translate_pending(self.transport(reply={"wrong": True})), 0)
         self.assertIn("formato inválido", translate.status["last_error"])
