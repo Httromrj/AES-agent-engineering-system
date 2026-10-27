@@ -17,5 +17,5 @@ COPY --chown=aes:aes research/sources.json /app/research/sources.json
 USER aes
 EXPOSE 8080
 # Lets Coolify keep the old container serving until the new one answers, so redeploys cause no downtime.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4).status == 200 else 1)"
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3   CMD python -c "import os,sys,urllib.request; p=os.environ.get('PORT') or os.environ.get('AES_DASHBOARD_PORT') or '8080'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:'+p+'/healthz', timeout=4).status == 200 else 1)"
 CMD ["python", "scripts/dashboard.py"]
