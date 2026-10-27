@@ -47,7 +47,7 @@ class OpenAICompatibleTransport:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         key_env = provider.get("api_key_env")
         if key_env:
-            key = os.environ.get(key_env)
+            key = provider.get("api_key") or os.environ.get(key_env)
             if not key:
                 raise OSError("provider credential unavailable")
             headers["Authorization"] = "Bearer " + key
@@ -116,7 +116,7 @@ class Gateway:
                 continue
             if not provider.get("local", False) and not provider.get("api_key_env"):
                 continue
-            if not provider.get("local", False) and not os.environ.get(provider["api_key_env"]):
+            if not provider.get("local", False) and not (provider.get("api_key") or os.environ.get(provider["api_key_env"])):
                 continue
             if not provider.get("local", False):
                 if level == "sensitive" and not (allow_sensitive_external and provider.get("sensitive_authorized") and provider.get("retention_reviewed_at")):

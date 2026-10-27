@@ -205,7 +205,7 @@ code or executable files to your repositories; your coding agent applies the ski
 
 When a provider key is configured, the dashboard also translates discovery titles and summaries to Brazilian Portuguese in the background (low effort, cached in `research/translations.jsonl`, capped by `AES_MAX_COST_PER_TRANSLATION_BATCH_USD`, default `0.5`); the original text stays one click away.
 
-Choose the provider and model under *AI and GitHub*. Each skill draft is capped by
+Paste provider keys and the GitHub token under *AI and GitHub*: they are stored only on the server in `private/secrets.json` (owner-only permissions), never logged, and never sent back to the browser, which shows just the last four characters. The environment variables in the table remain a fallback; a key saved in the dashboard takes precedence. Choose the provider and model on the same screen. Each skill draft is capped by
 `AES_MAX_COST_PER_ADOPTION_USD` (default `1.0`). GitHub access uses `AES_GITHUB_TOKEN`, a fine-grained token
 limited to the chosen repositories with **Contents: read and write**.
 

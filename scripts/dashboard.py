@@ -39,7 +39,7 @@ LOGIN_PAGE = PAGE_PATH.with_name("dashboard_login.html").read_text(encoding="utf
 SESSION_COOKIE = "aes_session"
 POST_ROUTES = {"/api/login", "/api/logout", "/api/password", "/api/run", "/api/triage",
                "/api/users/create", "/api/users/reset", "/api/users/role", "/api/users/delete"}
-ADOPTION_ROUTES = {"/api/adoption/test", "/api/translate", "/api/adoption/autopilot", "/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
+ADOPTION_ROUTES = {"/api/secrets/set", "/api/secrets/delete", "/api/adoption/test", "/api/translate", "/api/adoption/autopilot", "/api/adoption/settings", "/api/projects/add", "/api/projects/remove", "/api/adoptions/preview",
                    "/api/adoptions/deploy", "/api/adoptions/discard", "/api/adoptions/revert"}
 POST_ROUTES |= ADOPTION_ROUTES
 
@@ -515,7 +515,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         actor = admin["username"]
         try:
-            if path == "/api/adoption/test":
+            if path == "/api/secrets/set":
+                adopt.set_secret(payload.get("name"), payload.get("value"), actor)
+                pipeline.trigger()
+                result = adopt.secret_status(payload.get("name"))
+            elif path == "/api/secrets/delete":
+                adopt.delete_secret(payload.get("name"), actor)
+                result = adopt.secret_status(payload.get("name"))
+            elif path == "/api/adoption/test":
                 result = adopt.test_provider(payload.get("provider"))
             elif path == "/api/translate":
                 pipeline.trigger()

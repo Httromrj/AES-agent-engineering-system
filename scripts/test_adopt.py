@@ -149,7 +149,7 @@ class AdoptTests(unittest.TestCase):
 
     def test_missing_provider_key_is_explained(self):
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
-            with self.assertRaisesRegex(adopt.AdoptionError, "GEMINI_API_KEY"):
+            with self.assertRaisesRegex(adopt.AdoptionError, "Cadastre a chave de Google Gemini"):
                 adopt._gateway()
 
     def test_falls_back_to_other_configured_provider_and_reports_errors(self):
@@ -168,6 +168,30 @@ class AdoptTests(unittest.TestCase):
         self.assertEqual([t[0] for t in tried[-2:]], ["google", "deepseek"])
         with self.assertRaisesRegex(adopt.AdoptionError, "gemini-test is not found"):
             adopt.test_provider("google", transport=flaky)
+
+    def test_keys_entered_in_dashboard_are_masked_and_take_precedence(self):
+        key = "AIza" + "x" * 30 + "LAST"
+        adopt.set_secret("GEMINI_API_KEY", key, "aes")
+        status = adopt.secret_status("GEMINI_API_KEY")
+        self.assertEqual((status["source"], status["hint"]), ("tela", "LAST"))
+        self.assertNotIn(key, json.dumps(adopt.provider_status()))
+        seen = []
+
+        def capture(provider, messages, max_tokens, timeout):
+            seen.append(provider["api_key"])
+            return {"choices": [{"message": {"content": '{"ok": true}'}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+        adopt.test_provider("google", transport=capture)
+        self.assertEqual(seen, [key])
+        adopt.delete_secret("GEMINI_API_KEY", "aes")
+        self.assertEqual(adopt.secret_status("GEMINI_API_KEY")["source"], "ambiente")
+        for bad in ("short", "has space inside the key value", ""):
+            with self.assertRaises(adopt.AdoptionError):
+                adopt.set_secret("GEMINI_API_KEY", bad, "aes")
+        with self.assertRaises(adopt.AdoptionError):
+            adopt.set_secret("PATH", "x" * 20, "aes")
+        log = (adopt._dir() / "adoptions.jsonl").read_text(encoding="utf-8")
+        self.assertNotIn(key, log)
 
     def test_settings_validate_provider_and_model(self):
         with self.assertRaises(adopt.AdoptionError):

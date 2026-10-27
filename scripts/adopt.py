@@ -117,13 +117,75 @@ def _write_json(path, data):
 _lock = threading.Lock()
 
 
+# ---------------------------------------------------------------- secrets
+# API keys and the GitHub token can be entered in the dashboard. They are stored in <state>/private/secrets.json
+# (owner-only permissions on Linux), never logged, and never sent back to the browser; only the last four
+# characters are shown. A value saved in the dashboard wins over an environment variable of the same name.
+
+SECRET_LINKS = {
+    "ANTHROPIC_API_KEY": "https://console.anthropic.com/settings/keys",
+    "GEMINI_API_KEY": "https://aistudio.google.com/apikey",
+    "DEEPSEEK_API_KEY": "https://platform.deepseek.com/api_keys",
+    "XAI_API_KEY": "https://console.x.ai",
+    "OPENAI_API_KEY": "https://platform.openai.com/api-keys",
+    "AES_GITHUB_TOKEN": "https://github.com/settings/personal-access-tokens/new",
+}
+SECRET_NAMES = set(SECRET_LINKS)
+SECRET_RE = re.compile(r"^[A-Za-z0-9._~+/=:-]{10,400}$")
+
+
+def _secrets_path():
+    path = innovation.STATE / "private" / "secrets.json"
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return path
+
+
+def _stored_secrets():
+    data = _read_json(_secrets_path(), {})
+    return {k: v for k, v in data.items() if k in SECRET_NAMES and isinstance(v, str)} if isinstance(data, dict) else {}
+
+
+def secret(name):
+    return _stored_secrets().get(name) or os.environ.get(name) or ""
+
+
+def secret_status(name):
+    stored = _stored_secrets().get(name)
+    value = stored or os.environ.get(name) or ""
+    return {"name": name, "configured": bool(value), "source": "tela" if stored else "ambiente" if value else None,
+            "hint": value[-4:] if len(value) >= 12 else None, "link": SECRET_LINKS.get(name)}
+
+
+def set_secret(name, value, actor):
+    if name not in SECRET_NAMES:
+        raise AdoptionError("Chave desconhecida.")
+    value = (value or "").strip()
+    if not SECRET_RE.match(value):
+        raise AdoptionError("Cole a chave completa, sem espaços.")
+    with _lock:
+        data = _stored_secrets()
+        data[name] = value
+        _write_json(_secrets_path(), data)
+    _event({"event": "secret_saved", "actor": actor, "name": name})
+
+
+def delete_secret(name, actor):
+    if name not in SECRET_NAMES:
+        raise AdoptionError("Chave desconhecida.")
+    with _lock:
+        data = _stored_secrets()
+        data.pop(name, None)
+        _write_json(_secrets_path(), data)
+    _event({"event": "secret_removed", "actor": actor, "name": name})
+
+
 # ---------------------------------------------------------------- settings & providers
 
 def settings():
     data = _read_json(_dir() / "settings.json", {})
     provider = data.get("provider") if data.get("provider") in PROVIDERS else None
     if provider is None:
-        provider = next((pid for pid, p in PROVIDERS.items() if os.environ.get(p["api_key_env"])), "anthropic")
+        provider = next((pid for pid, p in PROVIDERS.items() if secret(p["api_key_env"])), "anthropic")
     models = data.get("models") if isinstance(data.get("models"), dict) else {}
     return {"provider": provider, "models": {pid: str(models.get(pid) or p["model"]) for pid, p in PROVIDERS.items()}}
 
@@ -144,7 +206,8 @@ def save_settings(provider, model, actor):
 
 def provider_status():
     current = settings()
-    return [{"id": pid, "label": p["label"], "configured": bool(os.environ.get(p["api_key_env"])),
+    return [{"id": pid, "label": p["label"], "configured": bool(secret(p["api_key_env"])),
+             "secret": secret_status(p["api_key_env"]),
              "key_env": p["api_key_env"], "model": current["models"][pid], "default_model": p["model"],
              "note": p.get("note"), "selected": pid == current["provider"]} for pid, p in PROVIDERS.items()]
 
@@ -161,7 +224,7 @@ class ProviderTransport(gateway.OpenAICompatibleTransport):
             raise OSError("anthropic SDK is not installed") from exc
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
         chat = [m for m in messages if m["role"] != "system"]
-        client = anthropic.Anthropic(api_key=os.environ.get(provider["api_key_env"]), timeout=float(timeout))
+        client = anthropic.Anthropic(api_key=provider.get("api_key") or secret(provider["api_key_env"]), timeout=float(timeout))
         try:
             response = client.beta.messages.create(
                 model=provider["model"], max_tokens=max_tokens, system=system, messages=chat,
@@ -202,10 +265,12 @@ def _gateway(transport=None, task="adopt", schema=SKILL_SCHEMA, effort="medium",
     chosen = only or current["provider"]
     order = [chosen] + ([] if only else [pid for pid in PROVIDERS if pid != chosen])
     providers = [_provider_config(pid, current["models"][pid], task, schema, effort, index)
-                 for index, pid in enumerate(order) if os.environ.get(PROVIDERS[pid]["api_key_env"])]
+                 for index, pid in enumerate(order) if secret(PROVIDERS[pid]["api_key_env"])]
+    for provider in providers:
+        provider["api_key"] = secret(provider["api_key_env"])
     if not providers:
         p = PROVIDERS[chosen]
-        raise AdoptionError(f"Configure a variável {p['api_key_env']} no Coolify para usar {p['label']}.")
+        raise AdoptionError(f"Cadastre a chave de {p['label']} em IA e GitHub.")
     config = {"providers": providers, "max_attempts": 3, "max_requests_per_run": 3,
               "max_cost_usd_per_run": MAX_COST_PER_ADOPTION_USD if max_cost is None else max_cost,
               "max_concurrency": 2, "timeout_seconds": 180, "max_output_tokens": 16000, "max_input_bytes": 120_000}
@@ -229,19 +294,19 @@ def test_provider(pid, transport=None):
 
 
 def provider_configured():
-    return bool(os.environ.get(PROVIDERS[settings()["provider"]]["api_key_env"]))
+    return any(secret(p["api_key_env"]) for p in PROVIDERS.values())
 
 
 # ---------------------------------------------------------------- GitHub
 
 def github_token():
-    return os.environ.get("AES_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    return secret("AES_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
 
 
 def github(method, path, body=None):
     token = github_token()
     if not token:
-        raise AdoptionError("Configure AES_GITHUB_TOKEN no Coolify (token do GitHub com permissão de escrita em Contents).")
+        raise AdoptionError("Cadastre o token do GitHub em IA e GitHub (permissão de escrita em Contents).")
     request = urllib.request.Request(
         GITHUB_API + path, method=method, data=json.dumps(body).encode("utf-8") if body is not None else None,
         headers={"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
@@ -264,11 +329,11 @@ def github(method, path, body=None):
 
 def github_identity():
     if not github_token():
-        return {"configured": False}
+        return {"configured": False, "secret": secret_status("AES_GITHUB_TOKEN")}
     try:
-        return {"configured": True, "login": github("GET", "/user").get("login")}
+        return {"configured": True, "login": github("GET", "/user").get("login"), "secret": secret_status("AES_GITHUB_TOKEN")}
     except AdoptionError as exc:
-        return {"configured": True, "error": str(exc)}
+        return {"configured": True, "error": str(exc), "secret": secret_status("AES_GITHUB_TOKEN")}
 
 
 def read_file(repo, path, ref):
@@ -662,7 +727,7 @@ def autopilot_run(ranked, transport=None):
     if not repos:
         return {"state": "waiting", "reason": "Cadastre pelo menos um projeto."}
     if not provider_configured() or not github_token():
-        return {"state": "waiting", "reason": "Configure a chave de IA e o AES_GITHUB_TOKEN."}
+        return {"state": "waiting", "reason": "Cadastre uma chave de IA e o token do GitHub em IA e GitHub."}
     today = _now()[:10]
     with _lock:
         records = {**_records(), **_jobs}
